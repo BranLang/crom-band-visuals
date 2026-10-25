@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<title>CROM</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></symbol>
+  <symbol id="i-start" viewBox="0 0 16 16"><path d="M3 2.5h2v11H3zM13 2.5v11L6 8z"/></symbol>
+  <symbol id="i-end" viewBox="0 0 16 16"><path d="M11 2.5h2v11h-2zM3 2.5v11l7-5.5z"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 16 16"><path d="M10.5 3 5 8l5.5 5V3z"/><path d="M3 3h1.5v10H3z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 16 16"><path d="M5.5 3 11 8l-5.5 5V3z"/><path d="M11.5 3H13v10h-1.5z"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 16 16"><path d="M6 4 2 7.5 6 11V8.5h4a2.5 2.5 0 0 1 0 5H7v1.5h3a4 4 0 0 0 0-8H6z"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 16 16"><path d="M10 4l4 3.5L10 11V8.5H6a2.5 2.5 0 0 0 0 5h3v1.5H6a4 4 0 0 1 0-8h4z"/></symbol>
+  <symbol id="i-save" viewBox="0 0 16 16"><path d="M2 2h9.5L14 4.5V14H2zm2 1.5v3h6v-3zm1 6v3h6v-3z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 3h4.8l1.5 1.5h6.7v8.5h-13z"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 16 16"><path d="M5.5 3 4.5 4.5H2v9h12v-9h-2.5L10.5 3zM8 6.3a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M6 2h4l.5 1H14v1.5H2V3h3.5zM3.5 5.5h9l-.7 8.5H4.2z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="M3.3 2.2 8 6.9l4.7-4.7 1.1 1.1L9.1 8l4.7 4.7-1.1 1.1L8 9.1l-4.7 4.7-1.1-1.1L6.9 8 2.2 3.3z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M7.2 2h1.6v5.2H14v1.6H8.8V14H7.2V8.8H2V7.2h5.2z"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M8 2.5a5.5 5.5 0 0 1 4.7 2.6L14 3.8V8h-4.2l1.7-1.7A3.9 3.9 0 1 0 11.9 9h1.6A5.5 5.5 0 1 1 8 2.5z"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 16 16"><path d="M8 1.5 9.4 6 14 7.5 9.4 9 8 13.5 6.6 9 2 7.5 6.6 6zM13 11l.6 1.6 1.6.6-1.6.6L13 15.4l-.6-1.6-1.6-.6 1.6-.6z"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 16 16"><path d="M8 2 4 6h2.8v5h2.4V6H12zM2.5 12.5h11V14h-11z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 16 16"><path d="M8 11.5 12 7.5H9.2v-5H6.8v5H4zM2.5 12.5h11V14h-11z"/></symbol>
+  <symbol id="i-film" viewBox="0 0 16 16"><path d="M1.5 2.5h13v11h-13zm1.5 1.5v1.5h1.5V4zm0 3v1.5h1.5V7zm0 3v1.5h1.5V10zm9-6v1.5h1.5V4zm0 3v1.5h1.5V7zm0 3v1.5h1.5V10zM6 4v8h4V4z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-image" viewBox="0 0 16 16"><path d="M1.5 2.5h13v11h-13zm1.5 1.5v6.2l3-3 2.5 2.5 1.7-1.7L13 11.8V4zm7.5 1.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="m2.5 8.5 1.2-1.2 2.8 2.8 5.8-5.8 1.2 1.2-7 7z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M8 1.5 15 14H1zm-.8 4.5v4h1.6V6zm0 5v1.6h1.6V11z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-reset" viewBox="0 0 16 16"><path d="M8 3a5 5 0 1 1-4.9 6h1.6A3.5 3.5 0 1 0 8 4.5V7L4.5 4 8 1z"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 16 16"><path d="M3 1.5h7l3 3v10H3zm1.5 1.5v10h7V5.5h-2.5V3zm1 5h5v1.2h-5zm0 2.5h5v1.2h-5z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 16 16"><path d="M3 3h10v10H3z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4-1.1-1.1L8 7.8 5.1 4.9z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 16 16"><path d="M1.5 2 15 8 1.5 14l1.8-5L9 8 3.3 7z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 16 16"><path d="M10.5 1.5A4 4 0 0 0 6.7 6.8L1.5 12v2.5H4v-1.6h1.6V11.3h1.6l1.9-1.9a4 4 0 1 0 1.4-7.9zm1 2.2a1.3 1.3 0 1 1 0 2.6 1.3 1.3 0 0 1 0-2.6z" fill-rule="evenodd"/></symbol>
+  <symbol id="i-wand" viewBox="0 0 16 16"><path d="m11.5 1.5 1 2 2 1-2 1-1 2-1-2-2-1 2-1zM3 11.2l6.1-6.1 1.8 1.8L4.8 13z"/></symbol>
+</svg>
+
+<header class="top">
+  <div class="brand" title="CROM · vizuály pre kapely">
+    <span class="brand-mark" id="brand-mark">C</span>
+    <span class="brand-text"><b id="brand-name">CROM</b><small id="brand-sub">vizuály pre kapely</small></span>
+  </div>
+  <div class="project-box">
+    <select id="project" title="Projekt (kapela)"></select>
+    <button class="ib" id="project-assets" title="Logo a obaly projektu"><svg><use href="#i-upload"/></svg></button>
+    <button class="ib" id="project-new" title="Nový projekt (kapela)"><svg><use href="#i-plus"/></svg></button>
+  </div>
+  <nav class="modules" id="modules" aria-label="Moduly"></nav>
+  <div class="top-mid">
+    <input id="name" class="name" type="text" placeholder="Názov úlohy" spellcheck="false" autocomplete="off">
+    <span id="recipe-badge" class="badge hidden" title="Načítaný recept"></span>
+  </div>
+  <div class="top-actions">
+    <button class="ib" id="undo" title="Späť (Ctrl+Z)" disabled><svg><use href="#i-undo"/></svg></button>
+    <button class="ib" id="redo" title="Znova (Ctrl+Y)" disabled><svg><use href="#i-redo"/></svg></button>
+    <span class="sep"></span>
+    <button class="btn" id="save-recipe" title="Uložiť recept (Ctrl+S)"><svg><use href="#i-save"/></svg>Uložiť recept</button>
+    <button class="btn" id="btn-draft" title="Rýchly náhľad videa v 960×540"><svg><use href="#i-film"/></svg>Rýchly náhľad</button>
+    <button class="btn primary" id="btn-final" title="Finálny render v plnom rozlíšení"><svg><use href="#i-play"/></svg>Render</button>
+  </div>
+</header>
+
+<main class="main">
+
+  <aside class="inspector" id="inspector">
+    <div class="insp-head">
+      <input id="filter" type="search" placeholder="Hľadať parameter…" spellcheck="false" autocomplete="off">
+      <button class="ib" id="reset-all" title="Všetky parametre na predvolené hodnoty"><svg><use href="#i-reset"/></svg></button>
+    </div>
+    <div class="presets" id="presets"></div>
+    <div class="groups" id="groups"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="viewer" id="viewer">
+      <div class="frame-box" id="frame-box">
+        <img id="frame" alt="" draggable="false">
+        <div class="frame-empty" id="frame-empty">Načítavam náhľad…</div>
+      </div>
+      <div class="hud">
+        <span class="hud-time" id="hud-time">0.00 s</span>
+        <span id="hud-phase"></span>
+        <span id="hud-size"></span>
+        <span id="hud-ms"></span>
+        <span class="pill warn hidden" id="hud-approx" title="Simulácia ohňa ešte beží, snímka je z najbližšieho hotového stavu">približne</span>
+      </div>
+      <div class="sim hidden" id="sim" title="Simulácia ohňa sa počíta na pozadí">
+        <span id="sim-text">Simulácia ohňa</span>
+        <div class="sim-bar"><i id="sim-fill"></i></div>
+      </div>
+      <div class="warnings hidden" id="warnings"></div>
+    </div>
+
+    <div class="transport">
+      <button class="ib" id="to-start" title="Na začiatok (Home)"><svg><use href="#i-start"/></svg></button>
+      <button class="ib" id="prev-marker" title="Predchádzajúca značka (,)"><svg><use href="#i-prev"/></svg></button>
+      <button class="ib big" id="play" title="Prehrať / zastaviť (medzerník)"><svg><use href="#i-play"/></svg></button>
+      <button class="ib" id="next-marker" title="Ďalšia značka (.)"><svg><use href="#i-next"/></svg></button>
+      <button class="ib" id="to-end" title="Na koniec (End)"><svg><use href="#i-end"/></svg></button>
+      <span class="tc" id="tc" title="Čas / celková dĺžka">00:00.00 <small>/ 00:00.00</small></span>
+      <input type="range" id="scrub" min="0" max="25" step="0.01" value="0" aria-label="Čas">
+      <label class="sel-wrap" title="Kvalita živého náhľadu">
+        <select id="quality">
+          <option value="auto">náhľad: auto</option>
+          <option value="fast">náhľad: rýchly</option>
+          <option value="fine">náhľad: presný</option>
+        </select>
+      </label>
+      <button class="ib" id="still" title="Uložiť túto snímku ako PNG v plnom rozlíšení"><svg><use href="#i-camera"/></svg></button>
+    </div>
+
+    <div class="timeline" id="timeline">
+      <div class="tl-head">
+        <div class="tl-ruler" id="tl-ruler"></div>
+      </div>
+      <div class="tl-row tl-phases-row">
+        <div class="tl-label">Fázy</div>
+        <div class="tl-track" id="tl-phases"></div>
+      </div>
+      <div class="tl-row tl-markers-row">
+        <div class="tl-label">Značky</div>
+        <div class="tl-track" id="tl-markers"></div>
+      </div>
+      <div class="tl-lanes" id="tl-lanes"></div>
+      <div class="tl-playhead" id="tl-playhead"><i></i></div>
+    </div>
+
+    <div class="strip" id="strip" title="Náhľadový pás celej animácie; kliknutím skočíš na daný čas">
+      <img id="strip-img" alt="" draggable="false">
+      <div class="strip-head" id="strip-head"></div>
+      <div class="strip-note hidden" id="strip-note">približne, simulácia beží…</div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <nav class="tabs" id="tabs">
+      <button data-tab="render" class="on">Render</button>
+      <button data-tab="outputs">Výstupy</button>
+      <button data-tab="recipes">Recepty</button>
+      <button data-tab="ai"><svg><use href="#i-spark"/></svg>Asistent</button>
+    </nav>
+
+    <section class="tab" id="tab-render">
+      <div class="card">
+        <div class="card-title">Výstup</div>
+        <div class="kv" id="render-summary"></div>
+        <div class="btn-row">
+          <button class="btn" id="btn-draft2"><svg><use href="#i-film"/></svg>Rýchly náhľad 960×540</button>
+          <button class="btn primary" id="btn-final2"><svg><use href="#i-play"/></svg>Finálny render</button>
+        </div>
+        <details class="sub" id="batch-box">
+          <summary id="batch-label">Dávka</summary>
+          <p class="hint" id="batch-help"></p>
+          <textarea id="batch" rows="4" placeholder="Song One&#10;Song Two / Part II&#10;…" spellcheck="false"></textarea>
+          <div class="btn-row">
+            <button class="btn" id="btn-batch"><svg><use href="#i-play"/></svg>Renderovať dávku</button>
+          </div>
+        </details>
+      </div>
+      <div class="card grow">
+        <div class="card-title">Úlohy <span class="count" id="jobs-count"></span>
+          <button class="ib right" id="jobs-clear" title="Odstrániť hotové úlohy zo zoznamu"><svg><use href="#i-trash"/></svg></button>
+        </div>
+        <ul class="list" id="jobs"></ul>
+        <div class="empty" id="jobs-empty">Zatiaľ žiadne úlohy. Rýchly náhľad vyrenderuje celé video v 960×540, finálny render v nastavenom rozlíšení.</div>
+      </div>
+    </section>
+
+    <section class="tab hidden" id="tab-outputs">
+      <div class="card grow">
+        <div class="card-title">Hotové výstupy
+          <button class="ib right" id="outputs-open" title="Otvoriť priečinok výstupov"><svg><use href="#i-folder"/></svg></button>
+          <button class="ib right" id="outputs-refresh" title="Obnoviť"><svg><use href="#i-refresh"/></svg></button>
+        </div>
+        <div class="path" id="outputs-path"></div>
+        <ul class="list" id="outputs"></ul>
+        <div class="empty" id="outputs-empty">Zatiaľ nič. Finálne rendery sa ukladajú do priečinka podľa názvu titulku, každý render ako nová verzia (v01, v02…).</div>
+      </div>
+    </section>
+
+    <section class="tab hidden" id="tab-recipes">
+      <div class="card">
+        <div class="card-title">Uložiť aktuálne nastavenie</div>
+        <div class="field-row">
+          <input id="recipe-name" type="text" placeholder="Názov receptu" spellcheck="false">
+          <button class="btn" id="recipe-save"><svg><use href="#i-save"/></svg>Uložiť</button>
+        </div>
+        <div class="btn-row">
+          <button class="btn sm" id="recipe-overwrite" disabled title="Prepísať načítaný recept"><svg><use href="#i-check"/></svg>Prepísať načítaný</button>
+          <button class="btn sm" id="recipe-export" title="Stiahnuť recept ako JSON"><svg><use href="#i-download"/></svg>Export</button>
+          <button class="btn sm" id="recipe-import" title="Načítať recept zo súboru JSON"><svg><use href="#i-upload"/></svg>Import</button>
+          <input type="file" id="recipe-file" accept=".json,application/json" hidden>
+        </div>
+      </div>
+      <div class="card grow">
+        <div class="card-title">Recepty
+          <button class="ib right" id="recipes-open" title="Otvoriť priečinok receptov"><svg><use href="#i-folder"/></svg></button>
+          <button class="ib right" id="recipes-refresh" title="Obnoviť"><svg><use href="#i-refresh"/></svg></button>
+        </div>
+        <ul class="list" id="recipes"></ul>
+        <div class="empty" id="recipes-empty">Zatiaľ žiadne recepty. Recept je kompletné nastavenie (text, písmo, materiál, svetlo, časovanie), ku ktorému sa dá kedykoľvek vrátiť.</div>
+      </div>
+    </section>
+
+    <section class="tab hidden" id="tab-ai">
+      <div class="card" id="ai-setup">
+        <div class="card-title">Asistent Claude
+          <button class="ib right" id="ai-settings-toggle" title="Nastavenia (kľúč, model)"><svg><use href="#i-key"/></svg></button>
+        </div>
+        <div class="ai-status" id="ai-status">Zisťujem stav…</div>
+        <div class="ai-settings hidden" id="ai-settings">
+          <p class="hint">Kľúč sa ukladá iba lokálne do súboru <code>_nastavenia.json</code> vedľa aplikácie a nikdy sa nezobrazuje. Získaš ho na console.anthropic.com. Používanie asistenta je platené podľa cenníka Anthropic; odhad ceny sa zobrazuje pri každej požiadavke.</p>
+          <div class="field-row">
+            <input id="ai-key" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
+            <button class="btn" id="ai-key-save">Uložiť kľúč</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn sm" id="ai-key-test" title="Overí kľúč jedným dopytom na zoznam modelov; nestojí nič">Overiť kľúč</button>
+            <button class="btn sm" id="ai-key-clear">Vymazať kľúč</button>
+          </div>
+          <div class="field-row two">
+            <label>Model <select id="ai-model"></select></label>
+            <label>Úsilie <select id="ai-effort"></select></label>
+          </div>
+          <div class="hint" id="ai-model-note"></div>
+          <div class="hint" id="ai-sdk-hint"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Požiadavka</div>
+        <textarea id="ai-prompt" rows="4" placeholder="Napr.: Urob z toho starý bronz, nástup pomalší o dve sekundy a rozpad nech ide od stredu. Skontroluj náhľad v polovici nástupu." spellcheck="true"></textarea>
+        <div class="ai-opts">
+          <label class="chk" title="Asistent smie spustiť rýchly náhľad videa (960×540), aby videl pohyb"><input type="checkbox" id="ai-allow-render"> môže spúšťať rýchle náhľady</label>
+          <label class="chk" title="Výsledok sa hneď použije v editore (Ctrl+Z ho vráti)"><input type="checkbox" id="ai-auto-apply" checked> použiť výsledok hneď</label>
+          <label class="chk" title="Ďalšia požiadavka nadviaže na túto konverzáciu"><input type="checkbox" id="ai-continue" checked> nadviazať na konverzáciu</label>
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="ai-send"><svg><use href="#i-send"/></svg>Poslať</button>
+          <button class="btn danger hidden" id="ai-cancel"><svg><use href="#i-stop"/></svg>Zrušiť</button>
+          <button class="btn sm" id="ai-new" title="Začať novú konverzáciu">Nová konverzácia</button>
+          <span class="ai-meta" id="ai-meta"></span>
+        </div>
+      </div>
+      <div class="card grow">
+        <div class="card-title">Priebeh</div>
+        <div class="ai-log" id="ai-log"></div>
+        <div class="ai-result hidden" id="ai-result">
+          <div class="ai-text" id="ai-text"></div>
+          <div class="ai-changes" id="ai-changes"></div>
+          <div class="btn-row">
+            <button class="btn primary sm" id="ai-apply"><svg><use href="#i-check"/></svg>Použiť zmeny</button>
+            <button class="btn sm" id="ai-discard">Zahodiť</button>
+          </div>
+        </div>
+        <div class="empty" id="ai-empty">Asistent vidí parametre oboch modulov, vie ich nastavovať, vyrenderovať si náhľadové snímky a pás celej animácie, pozrieť sa na ne a doladiť výsledok. Napíš, čo chceš dosiahnuť.</div>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<footer class="status">
+  <span id="st-left"></span>
+  <span id="st-job" class="st-job"></span>
+  <span id="st-right"></span>
+</footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div class="modal hidden" id="modal">
+  <div class="modal-box" role="dialog" aria-modal="true">
+    <div class="modal-head"><span id="modal-title"></span><button class="ib" id="modal-close" title="Zavrieť (Esc)"><svg><use href="#i-x"/></svg></button></div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="popover hidden" id="popover"></div>
+
+<script src="app.js"></script>
+<script src="ai.js"></script>
+</body>
+</html>

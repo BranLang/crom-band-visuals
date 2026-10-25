@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+_nastavenia.json
+_mcp_app.log
+*.log
+vystupy/
+_nahlady/
+_kos/
+_sdk/
+_stare/
+edge_prof/
+.DS_Store
+Thumbs.db
