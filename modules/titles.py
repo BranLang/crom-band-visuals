@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Titulky: nazov skladby v reliefnom pisme (modul aplikacie CROM).
+"""Titles: a song name in embossed metal lettering (a module of the CROM app).
 
-Kazdy snimok je cista funkcia (parametre, cas t), bez stavu medzi snimkami.
-Preto sa da nahlad hocikde prehodit a finalny render bezi na vsetkych jadrach.
+Every frame is a pure function of (parameters, time t), with no state between frames.
+So the preview can jump anywhere and the final render runs on every core.
 
-  python moduly/titulky.py stills recept.json priecinok --times 2,6,9,12,16,20 --res 960x540
-  python moduly/titulky.py render recept.json priecinok [--res 1920x1080] [--fps 30] [--crf 14] [--draft]
-                           [--project projekty/<kapela>]
+  python modules/titles.py stills recipe.json folder --times 2,6,9,12,16,20 --res 960x540
+  python modules/titles.py render recipe.json folder [--res 1920x1080] [--fps 30] [--crf 14] [--draft]
+                           [--project projects/<band>]
 
-Vsetky parametre su v SCHEMA. Novy slider = novy riadok v SCHEMA + jeho pouzitie v Title.
-Spolocne veci (schema, pisma, svetlo, kodovanie, projekty) su v jadro.py.
+Every parameter is in SCHEMA. A new slider = a new line in SCHEMA + its use in Title.
+Shared things (schema, fonts, light, encoding, projects) are in core.py.
 """
 import argparse
 import json
@@ -30,18 +30,18 @@ APP = os.path.dirname(HERE)
 if APP not in sys.path:
     sys.path.insert(0, APP)
 
-from jadro import (F, Project, Smoke, _p, accumulate, accumulate1, bloom, blank_out, coerce, compose_out,
+from core import (F, Project, Smoke, _p, accumulate, accumulate1, bloom, blank_out, coerce, compose_out,
     draw_star, emit, env01, ffmpeg_cmd, key_rgb, light_alpha, out_format, out_kind, out_name, video_cmd, gblur, get_font, hex_lin, luma3, output_params, parse_res, sample_pts,
     slugify, spectral_noise, splat_idx, split_lines, sstep, streak, strip_accents, tone_lut,
     wrap_sample, write_png)  # noqa: E402
 
 ENGINE_VERSION = 1
-MODULE_ID = "titulky"
-MODULE_LABEL = "Titulky"
+MODULE_ID = "titles"
+MODULE_LABEL = "Titles"
 MODULE_ORDER = 10
-MODULE_DESC = "Názov skladby v reliéfnom písme: nástup z tmy a rozpad na hviezdny prach."
-BATCH = {"key": "title", "label": "Dávka titulkov", "lines": True,
-         "help": "Každý riadok je jeden názov skladby; všetky sa vyrenderujú s tým istým receptom."}
+MODULE_DESC = "A song name in embossed lettering: it rises out of the dark and dissolves into stardust."
+BATCH = {"key": "title", "label": "Batch of titles", "lines": True,
+         "help": "Each line is one song name; all of them render with the same recipe."}
 
 
 # ----------------------------------------------------------------------------------------------
@@ -53,122 +53,122 @@ BATCH = {"key": "title", "label": "Dávka titulkov", "lines": True,
 
 SCHEMA = [
     {"id": "text", "label": "Text", "params": [
-        _p("title", "Názov", "textarea", "Song Title\nGoes Here", "layout",
-           hint="Každý riadok textu je jeden riadok titulku."),
-        _p("font", "Písmo", "font", "CinzelDecorative-Regular.ttf", "layout"),
-        _p("case", "Písmená", "select", "asis", "layout",
-           options=[["asis", "Ako sú napísané"], ["upper", "VEĽKÉ"], ["lower", "malé"]]),
-        F("size", "Veľkosť", 10, 2, 20, 0.1, "% výšky", "layout", "Výška veľkého písmena v hlavnom riadku."),
-        F("tracking", "Rozpal", 60, -100, 400, 5, "/1000 em", "layout"),
-        F("word_space", "Medzera slov", 100, 30, 300, 5, "%", "layout"),
-        _p("emphasis", "Hlavný riadok", "select", "last", "layout",
-           options=[["none", "Všetky rovnaké"], ["first", "Prvý väčší"], ["last", "Posledný väčší"]]),
-        F("line_ratio", "Menšie riadky", 62, 30, 100, 1, "%", "layout"),
-        F("line_gap", "Riadkovanie", 50, 5, 200, 1, "% písmena", "layout"),
-        F("max_width", "Najväčšia šírka", 84, 30, 98, 1, "% obrazu", "layout",
-          "Širší názov sa sám zmenší."),
-        F("pos_y", "Výška na obraze", 50, 15, 85, 0.5, "%"),
+        _p("title", "Title", "textarea", "Song Title\nGoes Here", "layout",
+           hint="Each line of text is one line of the title."),
+        _p("font", "Font", "font", "CinzelDecorative-Regular.ttf", "layout"),
+        _p("case", "Letter case", "select", "asis", "layout",
+           options=[["asis", "As typed"], ["upper", "UPPER CASE"], ["lower", "lower case"]]),
+        F("size", "Size", 10, 2, 20, 0.1, "% of height", "layout", "Height of a capital letter in the main line."),
+        F("tracking", "Tracking", 60, -100, 400, 5, "/1000 em", "layout"),
+        F("word_space", "Word spacing", 100, 30, 300, 5, "%", "layout"),
+        _p("emphasis", "Main line", "select", "last", "layout",
+           options=[["none", "All the same"], ["first", "First line larger"], ["last", "Last line larger"]]),
+        F("line_ratio", "Smaller lines", 62, 30, 100, 1, "%", "layout"),
+        F("line_gap", "Line spacing", 50, 5, 200, 1, "% of letter", "layout"),
+        F("max_width", "Maximum width", 84, 30, 98, 1, "% of frame", "layout",
+          "A wider title shrinks to fit."),
+        F("pos_y", "Vertical position", 50, 15, 85, 0.5, "%"),
     ]},
-    {"id": "material", "label": "Materiál", "params": [
-        _p("metal", "Farba kovu", "color", "#ffc56e"),
-        _p("spec_tint", "Farba lesku", "color", "#fff0d2"),
-        F("bevel", "Šírka hrany", 9, 1, 30, 0.5, "% písmena", "layout"),
-        F("bevel_round", "Zaoblenie hrany", 55, 0, 100, 1, "%", "layout"),
-        F("depth", "Hĺbka reliéfu", 100, 20, 300, 5, "%", "shade"),
-        F("env_sky", "Odraz neba", 1.3, 0, 4, 0.05),
-        F("env_floor", "Odraz zeme", 0.05, 0, 1, 0.01),
-        F("env_band", "Linka horizontu", 0.6, 0, 4, 0.05),
-        F("band_pos", "Poloha horizontu", 5, -60, 60, 1, "", "shade"),
-        F("face_grad", "Prechod na ploche", 45, 0, 100, 1, "%", "shade",
-          "Svetlý vrch a tmavší spodok písmen."),
-        F("texture", "Textúra kovu", 30, 0, 100, 1, "%"),
-        F("tex_scale", "Zrnitosť textúry", 100, 25, 400, 5, "%", "shade"),
+    {"id": "material", "label": "Material", "params": [
+        _p("metal", "Metal colour", "color", "#ffc56e"),
+        _p("spec_tint", "Highlight colour", "color", "#fff0d2"),
+        F("bevel", "Bevel width", 9, 1, 30, 0.5, "% of letter", "layout"),
+        F("bevel_round", "Bevel roundness", 55, 0, 100, 1, "%", "layout"),
+        F("depth", "Relief depth", 100, 20, 300, 5, "%", "shade"),
+        F("env_sky", "Sky reflection", 1.3, 0, 4, 0.05),
+        F("env_floor", "Ground reflection", 0.05, 0, 1, 0.01),
+        F("env_band", "Horizon line", 0.6, 0, 4, 0.05),
+        F("band_pos", "Horizon position", 5, -60, 60, 1, "", "shade"),
+        F("face_grad", "Face gradient", 45, 0, 100, 1, "%", "shade",
+          "Lighter tops and darker bottoms of the letters."),
+        F("texture", "Metal texture", 30, 0, 100, 1, "%"),
+        F("tex_scale", "Texture grain", 100, 25, 400, 5, "%", "shade"),
     ]},
-    {"id": "light", "label": "Svetlo", "params": [
-        F("key", "Hlavné svetlo", 0.8, 0, 3, 0.05),
-        F("key_angle", "Smer svetla", 125, 0, 360, 1, "°", "shade", "90° je zhora, 180° zľava."),
-        F("key_elev", "Výška svetla", 40, 5, 85, 1, "°", "shade"),
-        F("spec", "Lesk", 1.2, 0, 5, 0.05),
-        F("gloss", "Ostrosť lesku", 60, 4, 400, 1, "", "shade"),
-        F("ambient", "Rozptýlené svetlo", 0.06, 0, 1, 0.01),
-        F("rim", "Kontra", 1.0, 0, 5, 0.05, hint="Svetlo na hranách, rozsvieti sa prvé."),
-        F("rim_angle", "Smer kontry", 90, 0, 360, 1, "°", "shade"),
-        _p("rim_color", "Farba kontry", "color", "#ffd59a"),
-        F("sweep", "Pás svetla", 1.0, 0, 4, 0.05),
-        F("sweep_width", "Šírka pásu", 100, 20, 300, 5, "%"),
-        F("sweep_angle", "Sklon pásu", 22, -60, 60, 1, "°"),
-        F("glint", "Hviezdička", 1.0, 0, 3, 0.05, hint="Hviezdička, ktorá ide s pásom svetla."),
+    {"id": "light", "label": "Light", "params": [
+        F("key", "Key light", 0.8, 0, 3, 0.05),
+        F("key_angle", "Light direction", 125, 0, 360, 1, "°", "shade", "90° is from above, 180° from the left."),
+        F("key_elev", "Light elevation", 40, 5, 85, 1, "°", "shade"),
+        F("spec", "Shine", 1.2, 0, 5, 0.05),
+        F("gloss", "Shine sharpness", 60, 4, 400, 1, "", "shade"),
+        F("ambient", "Ambient light", 0.06, 0, 1, 0.01),
+        F("rim", "Rim light", 1.0, 0, 5, 0.05, hint="Light on the edges; it lights up first."),
+        F("rim_angle", "Rim light direction", 90, 0, 360, 1, "°", "shade"),
+        _p("rim_color", "Rim light colour", "color", "#ffd59a"),
+        F("sweep", "Light sweep", 1.0, 0, 4, 0.05),
+        F("sweep_width", "Sweep width", 100, 20, 300, 5, "%"),
+        F("sweep_angle", "Sweep angle", 22, -60, 60, 1, "°"),
+        F("glint", "Glint star", 1.0, 0, 3, 0.05, hint="A small star that travels with the light sweep."),
     ]},
-    {"id": "entry", "label": "Nástup", "params": [
-        F("t_in", "Dĺžka nástupu", 10, 3, 30, 0.5, "s"),
-        F("t_hold", "Ustálený záber", 5, 0, 30, 0.5, "s"),
-        F("fade_in", "Z tmy do", 35, 0, 100, 1, "% nástupu"),
-        F("rim_from", "Kontra od", 0, 0, 100, 1, "% nástupu"),
-        F("rim_to", "Kontra do", 45, 0, 100, 1, "% nástupu"),
-        F("key_from", "Svetlo od", 20, 0, 100, 1, "% nástupu"),
-        F("key_to", "Svetlo do", 80, 0, 100, 1, "% nástupu"),
-        F("focus", "Rozostrenie", 16, 0, 60, 0.5, "px", hint="Na začiatku je názov rozmazaný a zaostrí sa."),
-        F("focus_to", "Zaostrené v", 60, 1, 100, 1, "% nástupu"),
-        F("push", "Nájazd kamery", 9, 0, 40, 0.5, "%", hint="O koľko je názov na začiatku menší."),
-        F("rise", "Stúpanie", 1.2, -10, 10, 0.1, "% výšky"),
-        F("sweep_at", "Pás svetla od", 64, 0, 100, 1, "% nástupu"),
-        F("sweep_dur", "Pás svetla trvá", 22, 3, 80, 1, "% nástupu"),
-        F("breath", "Dýchanie žiary", 30, 0, 100, 1, "%", hint="Jemné pulzovanie v ustálenom zábere."),
-        F("sparkle", "Iskričky", 35, 0, 100, 1, "%", hint="Hviezdičky, ktoré občas bliknú na písmenách."),
+    {"id": "entry", "label": "Entry", "params": [
+        F("t_in", "Entry length", 10, 3, 30, 0.5, "s"),
+        F("t_hold", "Hold length", 5, 0, 30, 0.5, "s"),
+        F("fade_in", "Out of the dark by", 35, 0, 100, 1, "% of entry"),
+        F("rim_from", "Rim light from", 0, 0, 100, 1, "% of entry"),
+        F("rim_to", "Rim light to", 45, 0, 100, 1, "% of entry"),
+        F("key_from", "Key light from", 20, 0, 100, 1, "% of entry"),
+        F("key_to", "Key light to", 80, 0, 100, 1, "% of entry"),
+        F("focus", "Defocus", 16, 0, 60, 0.5, "px", hint="The title starts blurred and comes into focus."),
+        F("focus_to", "In focus at", 60, 1, 100, 1, "% of entry"),
+        F("push", "Camera push-in", 9, 0, 40, 0.5, "%", hint="How much smaller the title is at the start."),
+        F("rise", "Rise", 1.2, -10, 10, 0.1, "% of height"),
+        F("sweep_at", "Light sweep from", 64, 0, 100, 1, "% of entry"),
+        F("sweep_dur", "Light sweep length", 22, 3, 80, 1, "% of entry"),
+        F("breath", "Glow breathing", 30, 0, 100, 1, "%", hint="A gentle pulse during the hold."),
+        F("sparkle", "Sparkles", 35, 0, 100, 1, "%", hint="Little stars that now and then flash on the letters."),
     ]},
-    {"id": "dissolve", "label": "Rozpad", "params": [
-        F("t_out", "Dĺžka rozpadu", 10, 3, 30, 0.5, "s"),
-        _p("dir", "Smer rozpadu", "select", "ltr", "order",
-           options=[["ltr", "Zľava doprava"], ["rtl", "Sprava doľava"], ["center", "Od stredu"],
-                    ["edges", "Od krajov"], ["ttb", "Zhora dole"], ["btt", "Zdola hore"],
-                    ["letters", "Po písmenách"], ["random", "Náhodne"]]),
-        F("jitter", "Nepravidelnosť", 45, 0, 100, 1, "%", "order"),
-        F("dis_from", "Rozpad od", 6, 0, 90, 1, "% rozpadu"),
-        F("dis_to", "Posledné zrnko", 55, 5, 100, 1, "% rozpadu"),
-        F("preheat", "Žeravé čelo", 0.7, 0, 3, 0.05, "s", hint="Ako dlho písmeno žiari, kým sa rozpadne."),
-        F("heat", "Záblesk", 1.0, 0, 4, 0.05),
-        F("wind", "Vietor", 1.0, 0, 5, 0.05),
-        F("wind_angle", "Smer vetra", 12, -180, 180, 1, "°", hint="0° doprava, 90° hore."),
-        F("turb", "Víry", 1.0, 0, 5, 0.05),
-        F("lift", "Stúpanie zrniek", 0.6, -3, 5, 0.05),
-        F("spread", "Rozptyl", 0.8, 0, 5, 0.05),
-        F("life", "Život zrnka", 3.6, 0.5, 10, 0.1, "s"),
-        _p("dust_color", "Farba hviezdneho prachu", "color", "#c4dcff"),
-        F("grain", "Veľkosť zrnka", 100, 50, 400, 5, "%"),
-        F("stars", "Väčšie hviezdy", 8, 0, 100, 1, "‰", "order"),
-        F("twinkle", "Trblietanie", 60, 0, 100, 1, "%"),
-        F("end_fade", "Stmievačka", 1.5, 0, 5, 0.1, "s"),
+    {"id": "dissolve", "label": "Dissolve", "params": [
+        F("t_out", "Dissolve length", 10, 3, 30, 0.5, "s"),
+        _p("dir", "Dissolve direction", "select", "ltr", "order",
+           options=[["ltr", "Left to right"], ["rtl", "Right to left"], ["center", "From the centre"],
+                    ["edges", "From the edges"], ["ttb", "Top to bottom"], ["btt", "Bottom to top"],
+                    ["letters", "Letter by letter"], ["random", "Random"]]),
+        F("jitter", "Irregularity", 45, 0, 100, 1, "%", "order"),
+        F("dis_from", "Dissolve from", 6, 0, 90, 1, "% of dissolve"),
+        F("dis_to", "Last grain", 55, 5, 100, 1, "% of dissolve"),
+        F("preheat", "Glowing front", 0.7, 0, 3, 0.05, "s", hint="How long a letter glows before it falls apart."),
+        F("heat", "Flash", 1.0, 0, 4, 0.05),
+        F("wind", "Wind", 1.0, 0, 5, 0.05),
+        F("wind_angle", "Wind direction", 12, -180, 180, 1, "°", hint="0° is to the right, 90° up."),
+        F("turb", "Swirls", 1.0, 0, 5, 0.05),
+        F("lift", "Grain lift", 0.6, -3, 5, 0.05),
+        F("spread", "Spread", 0.8, 0, 5, 0.05),
+        F("life", "Grain life", 3.6, 0.5, 10, 0.1, "s"),
+        _p("dust_color", "Stardust colour", "color", "#c4dcff"),
+        F("grain", "Grain size", 100, 50, 400, 5, "%"),
+        F("stars", "Larger stars", 8, 0, 100, 1, "‰", "order"),
+        F("twinkle", "Twinkle", 60, 0, 100, 1, "%"),
+        F("end_fade", "Fade to black", 1.5, 0, 5, 0.1, "s"),
     ]},
-    {"id": "atmo", "label": "Atmosféra a obraz", "params": [
-        _p("bg", "Pozadie", "color", "#000000"),
-        F("backlight", "Žiara za textom", 0.0, 0, 3, 0.05),
-        _p("back_color", "Farba žiary", "color", "#8a4a18"),
-        F("mist", "Hmla", 0.2, 0, 3, 0.05),
-        _p("mist_color", "Farba hmly", "color", "#6e4d30"),
-        F("motes", "Prach vo vzduchu", 0.6, 0, 3, 0.05),
-        F("glow", "Žiara (bloom)", 0.6, 0, 3, 0.05),
-        F("streak", "Anamorfné pruhy", 0.18, 0, 3, 0.05),
-        F("vignette", "Vinetácia", 0.3, 0, 1, 0.01),
-        F("exposure", "Expozícia", 0.0, -3, 3, 0.05, "EV"),
-        F("saturation", "Sýtosť", 1.0, 0, 2, 0.01),
-        F("knee", "Mäkké svetlá", 85, 50, 99, 1, "%"),
-        F("film_grain", "Filmové zrno", 35, 0, 100, 1, "%"),
+    {"id": "atmo", "label": "Atmosphere and image", "params": [
+        _p("bg", "Background", "color", "#000000"),
+        F("backlight", "Glow behind the text", 0.0, 0, 3, 0.05),
+        _p("back_color", "Glow colour", "color", "#8a4a18"),
+        F("mist", "Mist", 0.2, 0, 3, 0.05),
+        _p("mist_color", "Mist colour", "color", "#6e4d30"),
+        F("motes", "Dust in the air", 0.6, 0, 3, 0.05),
+        F("glow", "Glow (bloom)", 0.6, 0, 3, 0.05),
+        F("streak", "Anamorphic streaks", 0.18, 0, 3, 0.05),
+        F("vignette", "Vignette", 0.3, 0, 1, 0.01),
+        F("exposure", "Exposure", 0.0, -3, 3, 0.05, "EV"),
+        F("saturation", "Saturation", 1.0, 0, 2, 0.01),
+        F("knee", "Soft highlights", 85, 50, 99, 1, "%"),
+        F("film_grain", "Film grain", 35, 0, 100, 1, "%"),
     ]},
-    {"id": "output", "label": "Výstup", "params": output_params(
-        seed=7, seed_rebuild="shade", seed_hint="Iné číslo = iné rozloženie zrniek, iskier a textúry.",
-        bg=True, bg_hint="Priehľadné pozadie: ostane len písmo, iskry a prach, bez farby pozadia, zadného "
-                         "svetla, hmly a vinetácie. Kľúčová farba je pre programy, ktoré alfu nevedia.")},
+    {"id": "output", "label": "Output", "params": output_params(
+        seed=7, seed_rebuild="shade", seed_hint="A different number gives a different layout of grains, sparks and texture.",
+        bg=True, bg_hint="Transparent background: only the lettering, sparks and dust remain, without the background "
+                         "colour, back light, mist and vignette. The key colour is for programs that cannot read alpha.")},
 ]
 
 PRESETS = [
-    {"id": "gold", "label": "Zlato", "params": {}},
-    {"id": "bronze", "label": "Starý bronz", "params": {
+    {"id": "gold", "label": "Gold", "params": {}},
+    {"id": "bronze", "label": "Old bronze", "params": {
         "metal": "#d8a165", "spec_tint": "#ffd9a8", "env_sky": 1.0, "env_band": 0.3, "texture": 60,
         "rim_color": "#ffb06a", "dust_color": "#ffd2a0", "mist_color": "#5a3a22", "streak": 0.15}},
-    {"id": "silver", "label": "Elfské striebro", "params": {
+    {"id": "silver", "label": "Elven silver", "params": {
         "metal": "#dfe7f2", "spec_tint": "#ffffff", "rim_color": "#cfe2ff", "dust_color": "#d6e8ff",
         "mist_color": "#2c3a4c", "back_color": "#203a60"}},
-    {"id": "ember", "label": "Dračí žiar", "params": {
+    {"id": "ember", "label": "Dragon glow", "params": {
         "metal": "#ff9e52", "spec_tint": "#ffd7a0", "rim_color": "#ff8a3c", "dust_color": "#ffb070",
         "heat": 1.8, "mist_color": "#5a2810", "back_color": "#902e08"}},
 ]
@@ -178,13 +178,13 @@ PRESETS = [
 # "from" missing = the bar starts at the phase start; "len" = duration param instead of an end param.
 # shape: "up" ramps 0 -> 1, "down" ramps 1 -> 0, "bar" is an event.
 LANES = [
-    {"id": "fade", "label": "Z tmy", "phase": "in", "to": "fade_in", "shape": "up"},
-    {"id": "focus", "label": "Zaostrenie", "phase": "in", "to": "focus_to", "shape": "down"},
-    {"id": "rim", "label": "Kontra", "phase": "in", "from": "rim_from", "to": "rim_to", "shape": "up"},
-    {"id": "key", "label": "Hlavné svetlo", "phase": "in", "from": "key_from", "to": "key_to", "shape": "up"},
-    {"id": "sweep", "label": "Pás svetla", "phase": "in", "from": "sweep_at", "len": "sweep_dur", "shape": "bar"},
-    {"id": "dis", "label": "Rozpad", "phase": "out", "from": "dis_from", "to": "dis_to", "shape": "bar"},
-    {"id": "end", "label": "Stmievačka", "phase": "end", "len": "end_fade", "shape": "down"},
+    {"id": "fade", "label": "From dark", "phase": "in", "to": "fade_in", "shape": "up"},
+    {"id": "focus", "label": "Focus", "phase": "in", "to": "focus_to", "shape": "down"},
+    {"id": "rim", "label": "Rim light", "phase": "in", "from": "rim_from", "to": "rim_to", "shape": "up"},
+    {"id": "key", "label": "Key light", "phase": "in", "from": "key_from", "to": "key_to", "shape": "up"},
+    {"id": "sweep", "label": "Light sweep", "phase": "in", "from": "sweep_at", "len": "sweep_dur", "shape": "bar"},
+    {"id": "dis", "label": "Dissolve", "phase": "out", "from": "dis_from", "to": "dis_to", "shape": "bar"},
+    {"id": "end", "label": "Fade to black", "phase": "end", "len": "end_fade", "shape": "down"},
 ]
 
 PARAMS = {p["key"]: p for g in SCHEMA for p in g["params"]}
@@ -214,19 +214,19 @@ def timeline(p):
     t1 = ti + th
     te = t1 + to
     mk = [
-        (ti * p["fade_in"] / 100, "z tmy"),
-        (ti * p["focus_to"] / 100, "zaostrené"),
-        (ti * p["sweep_at"] / 100, "pás svetla"),
-        (t1 + to * p["dis_from"] / 100, "začiatok rozpadu"),
-        (t1 + to * p["dis_to"] / 100, "posledné zrnko"),
-        (te - p["end_fade"], "stmievačka"),
+        (ti * p["fade_in"] / 100, "out of the dark"),
+        (ti * p["focus_to"] / 100, "in focus"),
+        (ti * p["sweep_at"] / 100, "light sweep"),
+        (t1 + to * p["dis_from"] / 100, "dissolve starts"),
+        (t1 + to * p["dis_to"] / 100, "last grain"),
+        (te - p["end_fade"], "fade to black"),
     ]
     return {
         "total": te, "t1": t1, "fps": int(p["fps"]),
         "phases": [
-            {"id": "in", "label": "Nástup", "t0": 0.0, "t1": ti, "video": 1},
-            {"id": "hold", "label": "Ustálený", "t0": ti, "t1": t1, "video": 1},
-            {"id": "out", "label": "Rozpad", "t0": t1, "t1": te, "video": 2},
+            {"id": "in", "label": "Entry", "t0": 0.0, "t1": ti, "video": 1},
+            {"id": "hold", "label": "Hold", "t0": ti, "t1": t1, "video": 1},
+            {"id": "out", "label": "Dissolve", "t0": t1, "t1": te, "video": 2},
         ],
         "markers": [{"t": round(t, 3), "label": lb} for t, lb in mk],
     }
@@ -317,9 +317,9 @@ class Title:
                     alt = strip_accents(ch)
                     g = fi.glyph(alt) if alt != ch else None
                     if g is None:
-                        warn.append(f"Písmo nemá znak „{ch}“, vynechal som ho.")
+                        warn.append(f"The font has no “{ch}” character, it was left out.")
                         continue
-                    warn.append(f"Písmo nemá „{ch}“, použil som „{alt}“.")
+                    warn.append(f"The font has no “{ch}”, used “{alt}” instead.")
                     ch = alt
                 if prev is not None:
                     x += fi.kern(prev, g)
@@ -333,7 +333,7 @@ class Title:
         if widest > maxw > 0:
             f = maxw / widest
             cap *= f
-            warn.append(f"Názov je široký, zmenšil som ho na {f * 100:.0f} % veľkosti.")
+            warn.append(f"The title is wide, it was scaled down to {f * 100:.0f} % of its size.")
         caps = [cap * s for s in scales]
         gap = p["line_gap"] / 100.0 * cap
         bases, y = [], 0.0
@@ -977,7 +977,7 @@ def recipe_doc(name, params):
 
 
 def default_name(p):
-    return " ".join(split_lines(p["title"])) or "Titulok"
+    return " ".join(split_lines(p["title"])) or "Title"
 
 
 def file_slug(p):
@@ -1037,7 +1037,7 @@ def cmd_render(a):
         W, H = parse_res(a.draft_res)
         crf, preset = 22, "veryfast"
     t_start = time.time()
-    emit(ev="start", msg="Pripravujem písmená a mapy")
+    emit(ev="start", msg="Preparing letters and light maps")
     proj = Project(a.project) if getattr(a, "project", None) else None
     T = Title(p, W, H, ctx=proj)
     N1 = int(round(T.T1 * fps))
@@ -1048,15 +1048,15 @@ def cmd_render(a):
     fmt = out_format(p, a.draft)
     kind = out_kind(p)
     if kind == "alpha":
-        tag += "_alfa"
+        tag += "_alpha"
     elif kind == "color":
-        tag += "_kluc"
+        tag += "_key"
     if a.draft:
-        files = [os.path.join(a.out, out_name(f"{slug}_nahlad_{tag}", fmt))]
+        files = [os.path.join(a.out, out_name(f"{slug}_preview_{tag}", fmt))]
     else:
-        files = [os.path.join(a.out, out_name(f"{slug}_1_nastup_{tag}", fmt)),
-                 os.path.join(a.out, out_name(f"{slug}_2_rozpad_{tag}", fmt))]
-    state = os.path.join(a.out, f".{slug}_{os.getpid()}_stav.pkl")
+        files = [os.path.join(a.out, out_name(f"{slug}_1_entry_{tag}", fmt)),
+                 os.path.join(a.out, out_name(f"{slug}_2_dissolve_{tag}", fmt))]
+    state = os.path.join(a.out, f".{slug}_{os.getpid()}_state.pkl")
     with open(state, "wb") as f:
         pickle.dump(T, f, protocol=pickle.HIGHEST_PROTOCOL)
     procs = [subprocess.Popen(video_cmd(fp, W, H, fps, crf, preset, fmt), stdin=subprocess.PIPE) for fp in files]
@@ -1083,13 +1083,13 @@ def cmd_render(a):
                 pr.stdin.close()
         for pr in procs:
             if pr.wait() != 0:
-                raise RuntimeError("ffmpeg skončil s chybou")
+                raise RuntimeError("ffmpeg exited with an error")
         out = list(files)
         if not a.draft:
-            still = os.path.join(a.out, f"{slug}_ustaleny_{W}x{H}{'_alfa' if kind == 'alpha' else ''}.png")
+            still = os.path.join(a.out, f"{slug}_still_{W}x{H}{'_alpha' if kind == 'alpha' else ''}.png")
             fr = T.frame(T.T_in + min(1.0, p["t_hold"] * 0.5), clean=True)
             write_png(still, fr)
-            rp = os.path.join(a.out, f"{slug}_recept.json")
+            rp = os.path.join(a.out, f"{slug}_recipe.json")
             with open(rp, "w", encoding="utf-8") as f:
                 json.dump(recipe_doc(rec.get("name") or slug, p), f, ensure_ascii=False, indent=2)
             out += [still, rp]
@@ -1115,7 +1115,7 @@ def main():
             st.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
-    ap = argparse.ArgumentParser(description="Titulky, modul aplikacie CROM")
+    ap = argparse.ArgumentParser(description="Titles, a module of the CROM app")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("stills")
     s.add_argument("recipe")

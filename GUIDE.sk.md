@@ -2,6 +2,7 @@
 
 CROM robí vizuály pre kapely: titulky skladieb, odhalenie loga a vlniaci sa obal albumu.
 Beží iba na tvojom počítači (Windows 10 alebo 11), nič neposiela na internet. Pre macOS pozri README.md.
+Rozhranie je po anglicky aj po slovensky: jazyk prepneš tlačidlami **EN / SK** v hornej lište a aplikácia si ho zapamätá.
 
 ---
 
@@ -10,11 +11,11 @@ Beží iba na tvojom počítači (Windows 10 alebo 11), nič neposiela na intern
 1. Stiahni `CROM.zip` (na GitHube **Code > Download ZIP**).
 2. Klikni naň pravým tlačidlom, zvoľ **Extrahovať všetko...** a ako cieľ zadaj napríklad `C:\CROM`.
    - Nerozbaľuj ho do OneDrive ani na plochu so synchronizáciou, video súbory sú veľké.
-3. V priečinku `C:\CROM` by si mal vidieť súbory `instaluj.bat`, `spusti.bat`, `app.py` a priečinky `moduly`, `projekty`, `web`.
+3. V priečinku `C:\CROM` by si mal vidieť súbory `install.bat`, `start.bat`, `app.py` a priečinky `modules`, `projects`, `web`.
 
 ## 2. Inštalácia (stačí raz)
 
-1. Dvojklik na **`instaluj.bat`**.
+1. Dvojklik na **`install.bat`**.
 2. Ak Windows ukáže modré okno „Systém Windows ochránil váš počítač“, klikni na **Ďalšie informácie** a potom **Spustiť aj tak**.
 3. Inštalátor sám:
    - nájde Python 3.10 alebo novší, a keď chýba, nainštaluje Python 3.12 cez winget,
@@ -22,12 +23,12 @@ Beží iba na tvojom počítači (Windows 10 alebo 11), nič neposiela na intern
    - stiahne knižnice (numpy, Pillow, opencv, fontTools),
    - nainštaluje ffmpeg, ak ho ešte nemáš.
 4. Winget sa môže opýtať na súhlas alebo na práva správcu, potvrď to.
-5. Trvá to pár minút a potrebuje internet. Na konci uvidíš **Hotovo**.
-6. Ak inštalácia skončí hláškou, že ffmpeg nenašla, zatvor okno a spusti `instaluj.bat` ešte raz (nový PATH sa niekedy prejaví až v novom okne).
+5. Trvá to pár minút a potrebuje internet. Na konci uvidíš **Done**.
+6. Ak inštalácia skončí hláškou, že ffmpeg nenašla (*ffmpeg could not be found*), zatvor okno a spusti `install.bat` ešte raz (nový PATH sa niekedy prejaví až v novom okne).
 
 ## 3. Spustenie
 
-1. Dvojklik na **`spusti.bat`**.
+1. Dvojklik na **`start.bat`**.
 2. Otvorí sa prehliadač na adrese **http://localhost:8765**.
 3. Čierne okno nechaj otvorené, kým pracuješ. Zatvorením okna (alebo Ctrl+C) aplikáciu vypneš.
 
@@ -45,7 +46,7 @@ Beží iba na tvojom počítači (Windows 10 alebo 11), nič neposiela na intern
 | **Obal (vlniaci sa)** | Obal albumu sa vlní ako látka vo vetre. |
 
 ### Logo a obal
-- Ikonka so šípkou nahor vedľa výberu projektu (**Logo a obaly projektu**) otvorí okno, kde tlačidlom **Nahrať…** pridáš logo alebo obal.
+- Ikonka so šípkou nahor vedľa výberu projektu (**Logá a obaly projektu**) otvorí okno, kde tlačidlom **Nahrať…** pridáš logo alebo obal.
 - V module potom súbor vyberieš v poli **logo** alebo **obal**. Malá ikonka vedľa poľa nahrá nový súbor rovno odtiaľ.
 - Logo najlepšie ako **PNG s priehľadným pozadím**. Aplikácia ho nikdy neprekresľuje, v pokoji je pixel po pixeli rovnaké.
 
@@ -63,8 +64,8 @@ Beží iba na tvojom počítači (Windows 10 alebo 11), nič neposiela na intern
 - Takéto video v strižni položíš na čokoľvek. Rýchly náhľad s alfou je vždy WebM.
 
 ### Render
-- **Rýchly náhľad** urobí video v 960×540 do `projekty/<projekt>/vystupy/_nahlady`.
-- **Render** urobí finálne video v plnom rozlíšení do `projekty/<projekt>/vystupy/<názov>/vNN`.
+- **Rýchly náhľad** urobí video v 960×540 do `projects/<projekt>/outputs/_previews`.
+- **Render** urobí finálne video v plnom rozlíšení do `projects/<projekt>/outputs/<názov>/vNN`.
 - Ikonka fotoaparátu pod náhľadom uloží aktuálnu snímku ako PNG.
 - Záložka **Výstupy** ukáže hotové videá, ikonkou priečinka ich otvoríš.
 - **Uložiť recept** (Ctrl+S) zapamätá všetky nastavenia, v záložke **Recepty** ich znova načítaš.
@@ -73,11 +74,11 @@ Beží iba na tvojom počítači (Windows 10 alebo 11), nič neposiela na intern
 
 Ak používaš Claude Desktop alebo Claude Code, CROM sa dá ovládať aj slovami.
 
-1. Najprv musí prebehnúť `instaluj.bat`.
-2. Dvojklik na **`pripoj_claude.bat`**. Opýta sa, či má CROM pridať do Claude Code a do Claude Desktop. Odpovedz `A` (áno) alebo `n` (nie).
-   - Pôvodné nastavenia Claude Desktop sa zálohujú do `claude_desktop_config.json.zaloha`.
+1. Najprv musí prebehnúť `install.bat`.
+2. Dvojklik na **`connect_claude.bat`**. Opýta sa (po anglicky), či má CROM pridať do Claude Code a do Claude Desktop. Odpovedz `Y` alebo `A` (áno), alebo `n` (nie).
+   - Pôvodné nastavenia Claude Desktop sa zálohujú do `claude_desktop_config.json.backup`.
 3. Claude Desktop úplne zatvor (aj z ikonky pri hodinách) a znova otvor.
-4. CROM sa spustí sám, keď ho Claude potrebuje, `spusti.bat` netreba.
+4. CROM sa spustí sám, keď ho Claude potrebuje, `start.bat` netreba.
 
 Príklady, čo môžeš Claudovi napísať:
 - „V CROM-e urob titulky pre skladbu *Zlatý drak*, album *Svetlo*, tmavé s ohňom, a ukáž mi náhľad v 3. sekunde.“
@@ -94,16 +95,20 @@ Aplikácia má asistenta, ktorý z vety poskladá nastavenia. Potrebuje Anthropi
    ```
 2. Kľúč vlož v aplikácii v záložke **Asistent** pod ikonkou kľúča (Nastavenia) a daj **Uložiť kľúč**. Alebo ho nastav ako premennú prostredia `ANTHROPIC_API_KEY`.
    - **Overiť kľúč** nič nestojí, platí sa až za skutočné použitie asistenta.
-3. Kľúč nikomu neposielaj. Uloží sa iba do súboru `_nastavenia.json` v priečinku CROM.
+3. Kľúč nikomu neposielaj. Uloží sa iba do súboru `_settings.json` v priečinku CROM.
 
-## 7. Keď niečo nejde
+## 7. Prechod zo staršej verzie
+
+Staršie verzie mali priečinky a súbory po slovensky (`projekty/`, `projekt.json`, `recepty/`, `obaly/`, `vystupy/`, `_nastavenia.json`). Pri prvom spustení ich aplikácia sama premenuje na anglické názvy (`projects/`, `project.json`, `recipes/`, `covers/`, `outputs/`, `_settings.json`) a v čiernom okne vypíše, čo presunula. Nič sa neprepíše a staré recepty fungujú ďalej.
+
+## 8. Keď niečo nejde
 
 | Problém | Riešenie |
 |---|---|
-| `spusti.bat` píše „Python pre CROM nie je pripravený“ | Spusti najprv `instaluj.bat`. |
-| „Chýba ffmpeg“ | Spusti `instaluj.bat` znova v novom okne, alebo nainštaluj ffmpeg z https://www.gyan.dev/ffmpeg/builds/ |
+| `start.bat` píše „Python for CROM is not set up yet“ | Spusti najprv `install.bat`. |
+| „ffmpeg is missing“ | Spusti `install.bat` znova v novom okne, alebo nainštaluj ffmpeg z https://www.gyan.dev/ffmpeg/builds/ |
 | Prehliadač sa neotvoril | Otvor ručne http://localhost:8765 |
-| „Port 8765 je obsadený“ | CROM už beží v inom okne. Zatvor ho, alebo použi to otvorené. |
+| „Port 8765 is already in use“ | CROM už beží v inom okne. Zatvor ho, alebo použi to otvorené. |
 | Modul hlási chybu | Pri zozname modulov sa objaví ikonka výstrahy s počtom chýb. Klikni na ňu a text chyby pošli autorovi (GitHub Issues). |
 | Render je pomalý | Full HD video sa počíta na procesore, minúta videa môže trvať niekoľko minút. Na skúšanie používaj Náhľad. |
-| Claude CROM nevidí | Spusti `pripoj_claude.bat` znova a Claude Desktop úplne reštartuj. Záznam behu je v `_mcp_app.log`. |
+| Claude CROM nevidí | Spusti `connect_claude.bat` znova a Claude Desktop úplne reštartuj. Záznam behu je v `_mcp_app.log`. |

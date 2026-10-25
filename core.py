@@ -1,16 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""CROM: spolocne jadro aplikacie.
+"""CROM: the shared core of the app.
 
-Tu je vsetko, co moduly zdielaju:
-  - cesty a projekty (kazda kapela ma vlastny priecinok v projekty/),
-  - hladanie modulov v moduly/ (novy efekt = novy subor, nic sa nikde nezapisuje),
-  - spolocna skupina Vystup (rozlisenie, fps, kvalita, pozadie: scena, priehladne, klucova farba),
-  - kodovanie cez ffmpeg (mp4, ProRes 4444, WebM s alfou, PNG sekvencia, HAP),
-  - male pomocne funkcie pre svetlo, sum, pisma a texty.
+Everything the modules share lives here:
+  - paths and projects (every band has its own folder in projects/),
+  - module discovery in modules/ (a new effect is a new file, nothing has to be registered),
+  - the shared Output group (resolution, fps, quality, background: scene, transparent, key colour),
+  - encoding through ffmpeg (mp4, ProRes 4444, WebM with alpha, PNG sequence, HAP),
+  - small helpers for light, noise, fonts and text,
+  - a one-time migration of the older Slovak folder and file names (migrate_legacy).
 
-Funkcie od _p po emit su presne tie iste ako v povodnom engine.py, aby sa po presune
-nezmenil ani jeden pixel.
+The functions from _p to emit are exactly the ones from the original engine.py, so moving them
+did not change a single pixel.
 """
 import importlib.util
 import json
@@ -29,10 +30,10 @@ from PIL import ImageFont
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 FONT_DIR = os.path.join(APP_DIR, "fonts")
 SHARED_FONTS = FONT_DIR
-MODULES_DIR = os.path.join(APP_DIR, "moduly")
-PROJECTS_DIR = os.path.join(APP_DIR, "projekty")
+MODULES_DIR = os.path.join(APP_DIR, "modules")
+PROJECTS_DIR = os.path.join(APP_DIR, "projects")
 APP_NAME = "CROM"
-APP_TAGLINE = "vizuály pre kapely"
+APP_TAGLINE = "visuals for bands"
 CORE_VERSION = 1
 
 
@@ -127,31 +128,31 @@ def make_recipe_doc(name, params, module_id, version, merge):
 # ----------------------------------------------------------------------------------------------
 
 RES_WIDE = [["1920x1080", "Full HD 1920×1080"], ["2560x1440", "QHD 2560×1440"], ["1280x720", "HD 1280×720"]]
-RES_ALL = RES_WIDE + [["1080x1920", "Na výšku 1080×1920"], ["1080x1080", "Štvorec 1080×1080"]]
+RES_ALL = RES_WIDE + [["1080x1920", "Portrait 1080×1920"], ["1080x1080", "Square 1080×1080"]]
 FPS_OPTIONS = [["24", "24"], ["25", "25"], ["30", "30"], ["50", "50"], ["60", "60"]]
-BG_MODES = [["scene", "Scéna (pozadie modulu)"], ["alpha", "Priehľadné (alfa kanál)"],
-            ["color", "Kľúčová farba (green screen)"]]
+BG_MODES = [["scene", "Scene (the module's background)"], ["alpha", "Transparent (alpha channel)"],
+            ["color", "Key colour (green screen)"]]
 ALPHA_FORMATS = {
-    "prores4444": {"label": "ProRes 4444 (.mov, pre strih)", "ext": ".mov"},
-    "webm": {"label": "WebM VP9 (.webm, pre web)", "ext": ".webm"},
-    "png": {"label": "PNG sekvencia (priečinok obrázkov)", "ext": ""},
-    "hap": {"label": "HAP Alpha (.mov, pre Resolume a VJ)", "ext": ".mov"},
+    "prores4444": {"label": "ProRes 4444 (.mov, for editing)", "ext": ".mov"},
+    "webm": {"label": "WebM VP9 (.webm, for the web)", "ext": ".webm"},
+    "png": {"label": "PNG sequence (a folder of images)", "ext": ""},
+    "hap": {"label": "HAP Alpha (.mov, for Resolume and VJ)", "ext": ".mov"},
 }
 VIDEO_EXT = (".mp4", ".mov", ".webm")
 
 
 def bg_params(hint=""):
-    d = _p("bg_mode", "Pozadie", "select", "scene", options=[list(o) for o in BG_MODES],
-           hint=hint or "Priehľadné pozadie ide do strihu alebo VJ softvéru cez obraz. "
-                        "Kľúčová farba je pre programy, ktoré alfu nevedia.")
+    d = _p("bg_mode", "Background", "select", "scene", options=[list(o) for o in BG_MODES],
+           hint=hint or "A transparent background goes over other footage in an editor or VJ software. "
+                        "The key colour is for programs that cannot read alpha.")
     return [
         d,
-        _p("bg_key", "Kľúčová farba", "color", "#00b140", show_if={"bg_mode": "color"},
-           hint="Farba pozadia, ktorú strih vykľúčuje. Zelená #00b140 alebo modrá #0047bb."),
-        _p("alpha_format", "Formát s alfou", "select", "prores4444",
+        _p("bg_key", "Key colour", "color", "#00b140", show_if={"bg_mode": "color"},
+           hint="The background colour the editor keys out. Green #00b140 or blue #0047bb."),
+        _p("alpha_format", "Alpha format", "select", "prores4444",
            options=[[k, v["label"]] for k, v in ALPHA_FORMATS.items()], show_if={"bg_mode": "alpha"},
-           hint="ProRes 4444 pre Premiere, DaVinci a Final Cut, HAP pre Resolume, WebM pre web, "
-                "PNG sekvencia pre hocičo. Rýchly náhľad je vždy WebM."),
+           hint="ProRes 4444 for Premiere, DaVinci and Final Cut, HAP for Resolume, WebM for the web, "
+                "a PNG sequence for anything else. The quick preview is always WebM."),
     ]
 
 
@@ -162,11 +163,11 @@ def output_params(seed=7, seed_rebuild=None, seed_hint="", fps_rebuild=None, res
     if seed_hint:
         seed_kw["hint"] = seed_hint
     out = [
-        _p("res", "Rozlíšenie", "select", res_default, options=[list(o) for o in res]),
-        _p("fps", "Snímky za sekundu", "select", "30", fps_rebuild, options=[list(o) for o in FPS_OPTIONS]),
-        _p("crf", "Kvalita (CRF)", "int", 14, min=8, max=28, step=1,
-           hint="Menšie číslo = lepšia kvalita a väčší súbor."),
-        _p("seed", "Náhoda", "int", seed, seed_rebuild, **seed_kw),
+        _p("res", "Resolution", "select", res_default, options=[list(o) for o in res]),
+        _p("fps", "Frames per second", "select", "30", fps_rebuild, options=[list(o) for o in FPS_OPTIONS]),
+        _p("crf", "Quality (CRF)", "int", 14, min=8, max=28, step=1,
+           hint="A smaller number means better quality and a bigger file."),
+        _p("seed", "Random seed", "int", seed, seed_rebuild, **seed_kw),
     ]
     if bg:
         out += bg_params(bg_hint)
@@ -521,7 +522,7 @@ def slugify(text):
     s = " ".join(split_lines(text))
     s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii").lower()
     s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
-    return (s[:60].strip("_")) or "titulok"
+    return (s[:60].strip("_")) or "title"
 
 
 # ----------------------------------------------------------------------------------------------
@@ -634,7 +635,7 @@ def video_cmd(out, W, H, fps, crf, preset="slow", fmt="mp4", x264=None):
                 "-row-mt", "1", "-auto-alt-ref", "0"] + speed + _TAGS709 + [out])
     if fmt == "hap":
         if W % 4 or H % 4:
-            raise ValueError("HAP potrebuje šírku a výšku deliteľnú 4.")
+            raise ValueError("HAP needs a width and height divisible by 4.")
         return _raw_input(W, H, fps, "rgba") + ["-c:v", "hap", "-format", "hap_alpha", out]
     if fmt == "png":
         os.makedirs(out, exist_ok=True)
@@ -643,7 +644,7 @@ def video_cmd(out, W, H, fps, crf, preset="slow", fmt="mp4", x264=None):
             stem = stem[:-4]
         return _raw_input(W, H, fps, "rgba") + ["-f", "image2", "-c:v", "png", "-pix_fmt", "rgba",
                                                os.path.join(out, stem + "_%05d.png")]
-    raise ValueError(f"Neznámy formát videa: {fmt}")
+    raise ValueError(f"Unknown video format: {fmt}")
 
 
 def write_png(path, img):
@@ -655,7 +656,7 @@ def write_png(path, img):
         a = a[..., ::-1]
     ok, buf = cv2.imencode(".png", np.ascontiguousarray(a))
     if not ok:
-        raise RuntimeError("PNG sa nepodarilo zakódovať")
+        raise RuntimeError("Could not encode the PNG")
     buf.tofile(path)
 
 
@@ -671,13 +672,13 @@ def read_image(path, flags=cv2.IMREAD_UNCHANGED):
 
 
 # ----------------------------------------------------------------------------------------------
-# Projects: one folder per band or client in projekty/, with its own recipes, assets and outputs
+# Projects: one folder per band or client in projects/, with its own recipes, assets and outputs
 # ----------------------------------------------------------------------------------------------
 
-PROJECT_FILE = "projekt.json"
+PROJECT_FILE = "project.json"
 ASSET_KINDS = {
-    "logo": ("logo", (".png", ".webp")),
-    "obal": ("obaly", (".png", ".jpg", ".jpeg", ".webp")),
+    "logo": ("logos", (".png", ".webp")),
+    "cover": ("covers", (".png", ".jpg", ".jpeg", ".webp")),
 }
 SLUG_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,59}")
 
@@ -689,7 +690,7 @@ def _ascii_slug(text, fallback):
 
 
 class Project:
-    """A band (or any client): projekty/<slug>/ with projekt.json, recepty/, logo/, obaly/ and outputs."""
+    """A band (or any client): projects/<slug>/ with project.json, recipes/, logos/, covers/ and outputs/."""
 
     def __init__(self, path):
         self.dir = os.path.normpath(os.path.abspath(path))
@@ -708,24 +709,24 @@ class Project:
 
     @property
     def name(self):
-        return str(self.meta.get("nazov") or self.slug)
+        return str(self.meta.get("name") or self.slug)
 
     @property
     def out_root(self):
-        """Where finished versions go. projekt.json "vystupy" may point elsewhere (relative to the project)."""
-        return os.path.normpath(os.path.join(self.dir, str(self.meta.get("vystupy") or "vystupy")))
+        """Where finished versions go. project.json "outputs" may point elsewhere (relative to the project)."""
+        return os.path.normpath(os.path.join(self.dir, str(self.meta.get("outputs") or "outputs")))
 
     @property
     def draft_dir(self):
-        return os.path.join(self.out_root, "_nahlady")
+        return os.path.join(self.out_root, "_previews")
 
     @property
     def recipe_dir(self):
-        return os.path.join(self.dir, "recepty")
+        return os.path.join(self.dir, "recipes")
 
     @property
     def trash_dir(self):
-        return os.path.join(self.recipe_dir, "_kos")
+        return os.path.join(self.recipe_dir, "_trash")
 
     def asset_dir(self, kind):
         return os.path.join(self.dir, ASSET_KINDS[kind][0])
@@ -750,8 +751,8 @@ class Project:
         return fp if os.path.isfile(fp) else None
 
     def info(self):
-        return {"slug": self.slug, "name": self.name, "popis": str(self.meta.get("popis") or ""),
-                "moduly": self.meta.get("moduly") if isinstance(self.meta.get("moduly"), list) else None,
+        return {"slug": self.slug, "name": self.name, "description": str(self.meta.get("description") or ""),
+                "modules": self.meta.get("modules") if isinstance(self.meta.get("modules"), list) else None,
                 "assets": {k: self.assets(k) for k in ASSET_KINDS}}
 
     @staticmethod
@@ -774,19 +775,19 @@ class Project:
         return Project(d) if os.path.isfile(os.path.join(d, PROJECT_FILE)) else None
 
     @staticmethod
-    def create(name, popis=""):
+    def create(name, description=""):
         name = re.sub(r"\s+", " ", str(name or "")).strip()[:80]
         if not name:
-            raise ValueError("Projekt potrebuje názov.")
-        base = _ascii_slug(name, "projekt")
+            raise ValueError("A project needs a name.")
+        base = _ascii_slug(name, "project")
         slug, n = base, 2
         while os.path.exists(os.path.join(PROJECTS_DIR, slug)):
             slug, n = f"{base}-{n}", n + 1
         d = os.path.join(PROJECTS_DIR, slug)
-        for sub in ("recepty", "logo", "obaly", "vystupy"):
+        for sub in ("recipes", "logos", "covers", "outputs"):
             os.makedirs(os.path.join(d, sub), exist_ok=True)
-        meta = {"nazov": name, "popis": str(popis or "").strip()[:400],
-                "vytvoreny": time.strftime("%Y-%m-%d %H:%M:%S")}
+        meta = {"name": name, "description": str(description or "").strip()[:400],
+                "created": time.strftime("%Y-%m-%d %H:%M:%S")}
         with open(os.path.join(d, PROJECT_FILE), "w", encoding="utf-8") as f:
             json.dump(meta, f, ensure_ascii=False, indent=2)
         return Project(d)
@@ -800,12 +801,101 @@ def project_asset(ctx, kind, name):
 
 
 # ----------------------------------------------------------------------------------------------
-# Modules: every moduly/*.py with the module interface is found on start; nothing to register
+# Older installs used Slovak folder, file and module names (projekty/, projekt.json, recepty/, obaly/,
+# vystupy/, module ids titulky and obal). migrate_legacy() renames them once, in place, so a band's
+# logos, covers, recipes and renders carry over. Recipe files keep their old module ids and are read
+# through MODULE_ALIASES, so nothing inside them has to be rewritten.
+# ----------------------------------------------------------------------------------------------
+
+MODULE_ALIASES = {"titulky": "titles", "obal": "waving_cover"}
+LEGACY_PROJECTS_DIR = os.path.join(APP_DIR, "projekty")
+_LEGACY_META = {"nazov": "name", "popis": "description", "moduly": "modules", "vystupy": "outputs",
+                "vytvoreny": "created"}
+_LEGACY_SUBDIRS = (("recepty", "recipes"), ("logo", "logos"), ("obaly", "covers"), ("vystupy", "outputs"))
+
+
+def module_id(mid, default="titles"):
+    """A module id with the old Slovak ids mapped to the current ones."""
+    s = str(mid or default)
+    return MODULE_ALIASES.get(s, s)
+
+
+def _merge_move(src, dst, log):
+    """Move src to dst. When dst is an existing folder, move src's entries into it one by one;
+    an entry that exists on both sides stays where it is (nothing is ever overwritten)."""
+    if not os.path.lexists(src):
+        return
+    if not os.path.lexists(dst):
+        os.rename(src, dst)
+        log.append(f"{os.path.relpath(src, APP_DIR)} -> {os.path.relpath(dst, APP_DIR)}")
+        return
+    if os.path.isdir(src) and os.path.isdir(dst) and not os.path.islink(src):
+        for fn in os.listdir(src):
+            _merge_move(os.path.join(src, fn), os.path.join(dst, fn), log)
+        try:
+            os.rmdir(src)
+        except OSError:
+            pass
+
+
+def _migrate_project_dir(d, log):
+    old_meta, new_meta = os.path.join(d, "projekt.json"), os.path.join(d, PROJECT_FILE)
+    if os.path.isfile(old_meta) and not os.path.exists(new_meta):
+        try:
+            with open(old_meta, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            if isinstance(meta, dict):
+                meta = {_LEGACY_META.get(k, k): v for k, v in meta.items()}
+                mods = meta.get("modules")
+                if isinstance(mods, list):
+                    meta["modules"] = [module_id(m) for m in mods]
+                with open(new_meta, "w", encoding="utf-8") as f:
+                    json.dump(meta, f, ensure_ascii=False, indent=2)
+                os.remove(old_meta)
+                log.append(f"{os.path.relpath(old_meta, APP_DIR)} -> {PROJECT_FILE}")
+        except (OSError, ValueError):
+            pass
+    for old, new in _LEGACY_SUBDIRS:
+        _merge_move(os.path.join(d, old), os.path.join(d, new), log)
+    _merge_move(os.path.join(d, "recipes", "_kos"), os.path.join(d, "recipes", "_trash"), log)
+    _merge_move(os.path.join(d, "outputs", "_nahlady"), os.path.join(d, "outputs", "_previews"), log)
+
+
+def migrate_legacy():
+    """One-time rename of the Slovak layout of older versions. Returns what was moved (empty when
+    there was nothing to do). Safe to call on every start."""
+    log = []
+    try:
+        _merge_move(os.path.join(APP_DIR, "_nastavenia.json"), os.path.join(APP_DIR, "_settings.json"), log)
+        if os.path.isdir(LEGACY_PROJECTS_DIR):
+            os.makedirs(PROJECTS_DIR, exist_ok=True)
+            for fn in os.listdir(LEGACY_PROJECTS_DIR):
+                src = os.path.join(LEGACY_PROJECTS_DIR, fn)
+                if os.path.isdir(src):
+                    _migrate_project_dir(src, log)
+                _merge_move(src, os.path.join(PROJECTS_DIR, fn), log)
+            try:
+                os.rmdir(LEGACY_PROJECTS_DIR)
+            except OSError:
+                log.append("projekty/ was kept: it still holds files whose names already exist in projects/ "
+                           "(nothing was overwritten); compare them by hand and delete the folder")
+        if os.path.isdir(PROJECTS_DIR):
+            for fn in os.listdir(PROJECTS_DIR):
+                d = os.path.join(PROJECTS_DIR, fn)
+                if os.path.isdir(d):
+                    _migrate_project_dir(d, log)
+    except OSError as e:
+        log.append(f"migration stopped: {e}")
+    return log
+
+
+# ----------------------------------------------------------------------------------------------
+# Modules: every modules/*.py with the module interface is found on start; nothing to register
 # ----------------------------------------------------------------------------------------------
 
 REQUIRED = ("MODULE_ID", "MODULE_LABEL", "SCHEMA", "PRESETS", "LANES", "defaults", "merge", "level_key",
             "timeline", "default_name", "file_slug", "load_recipe", "recipe_doc", "Renderer")
-_RESERVED = {"jadro", "app", "ai", "baseline"}
+_RESERVED = {"core", "app", "ai", "baseline", "mcp_server"}
 _NAME_RE = re.compile(r"[a-z][a-z0-9_]*")
 MODULE_ERRORS = {}
 _FOUND = None
@@ -817,7 +907,7 @@ def _load_module(name, path):
         f = getattr(old, "__file__", None)
         if f and os.path.normcase(os.path.abspath(f)) == os.path.normcase(os.path.abspath(path)):
             return old
-        raise ImportError(f"názov {name} už používa iný modul Pythonu, premenuj súbor")
+        raise ImportError(f"the name {name} is already used by another Python module, rename the file")
     spec = importlib.util.spec_from_file_location(name, path)
     m = importlib.util.module_from_spec(spec)
     sys.modules[name] = m
@@ -830,7 +920,7 @@ def _load_module(name, path):
 
 
 def discover(reload=False):
-    """{MODULE_ID: module} for every working module in moduly/, in menu order. Broken files land in
+    """{MODULE_ID: module} for every working module in modules/, in menu order. Broken files land in
     MODULE_ERRORS with the reason, the rest keeps working."""
     global _FOUND
     if _FOUND is not None and not reload:
@@ -845,16 +935,16 @@ def discover(reload=False):
         name = fn[:-3]
         try:
             if not _NAME_RE.fullmatch(name):
-                raise ImportError("názov súboru smie mať len malé písmená, číslice a _")
+                raise ImportError("a module file name may only contain lower-case letters, digits and _")
             if name in _RESERVED or name in getattr(sys, "stdlib_module_names", ()):
-                raise ImportError(f"názov {name} je vyhradený, premenuj súbor")
+                raise ImportError(f"the name {name} is reserved, rename the file")
             m = _load_module(name, os.path.join(MODULES_DIR, fn))
             miss = [a for a in REQUIRED if not hasattr(m, a)]
             if miss:
-                raise AttributeError("chýba " + ", ".join(miss))
+                raise AttributeError("missing " + ", ".join(miss))
             mid = str(m.MODULE_ID)
             if mid in seen:
-                raise ValueError(f"MODULE_ID {mid} už má {seen[mid]}")
+                raise ValueError(f"MODULE_ID {mid} is already used by {seen[mid]}")
             seen[mid] = fn
             found.append(m)
         except (Exception, SystemExit) as e:  # noqa: BLE001
@@ -866,10 +956,10 @@ def discover(reload=False):
 
 def available_for(mods, project):
     """Modules offered in a project: a module may name its projects (PROJECTS), a project may name
-    its modules (projekt.json "moduly")."""
+    its modules (project.json "modules")."""
     allow = None
     if project is not None:
-        lst = project.meta.get("moduly")
+        lst = project.meta.get("modules")
         if isinstance(lst, list) and lst:
             allow = {str(x) for x in lst}
     out = {}
@@ -884,8 +974,8 @@ def available_for(mods, project):
 
 # ----------------------------------------------------------------------------------------------
 # Command line for modules whose frames do not depend on each other (no simulation):
-#   python moduly/<modul>.py render recept.json priecinok [--res 1920x1080] [--draft] [--project ...]
-#   python moduly/<modul>.py stills recept.json priecinok [--times 0.5,2,4]
+#   python modules/<module>.py render recipe.json folder [--res 1920x1080] [--draft] [--project ...]
+#   python modules/<module>.py stills recipe.json folder [--times 0.5,2,4]
 # The app starts render with --project; frames are drawn in parallel worker processes.
 # Optional module hooks: X264_EXTRA (list of x264 options), still_time(p), RENDER_MSG.
 # ----------------------------------------------------------------------------------------------
@@ -938,15 +1028,15 @@ def _cli_render(M, a):
         W, H = parse_res(a.draft_res)
         crf, preset = 22, "veryfast"
     t_start = time.time()
-    emit(ev="start", msg=getattr(M, "RENDER_MSG", "Pripravujem snímky"))
+    emit(ev="start", msg=getattr(M, "RENDER_MSG", "Preparing frames"))
     R = M.Renderer(p, W, H, ctx=P)
     N = max(1, int(round(R.T_end * fps)))
     slug = a.slug or M.file_slug(p)
     os.makedirs(a.out, exist_ok=True)
     kind = out_kind(p)
-    tag = f"{W}x{H}_{fps}fps" + {"alpha": "_alfa", "color": "_kluc"}.get(kind, "")
+    tag = f"{W}x{H}_{fps}fps" + {"alpha": "_alpha", "color": "_key"}.get(kind, "")
     fmt = out_format(p, a.draft)
-    fp = os.path.join(a.out, out_name(f"{slug}_nahlad_{tag}" if a.draft else f"{slug}_{tag}", fmt))
+    fp = os.path.join(a.out, out_name(f"{slug}_preview_{tag}" if a.draft else f"{slug}_{tag}", fmt))
     proc = subprocess.Popen(video_cmd(fp, W, H, fps, crf, preset, fmt, getattr(M, "X264_EXTRA", None)),
                             stdin=subprocess.PIPE)
     nw = max(1, min(a.workers or (os.cpu_count() or 4) - 1, 16, N))
@@ -968,14 +1058,14 @@ def _cli_render(M, a):
                     tlast = now
         proc.stdin.close()
         if proc.wait() != 0:
-            raise RuntimeError("ffmpeg skončil s chybou")
+            raise RuntimeError("ffmpeg exited with an error")
         out = [fp]
         if not a.draft:
             st = getattr(M, "still_time", None)
             ts = float(st(p)) if callable(st) else R.T_end * 0.5
-            still = os.path.join(a.out, f"{slug}_ustaleny_{W}x{H}{'_alfa' if kind == 'alpha' else ''}.png")
+            still = os.path.join(a.out, f"{slug}_still_{W}x{H}{'_alpha' if kind == 'alpha' else ''}.png")
             write_png(still, R.frame(ts, clean=True))
-            rp = os.path.join(a.out, f"{slug}_recept.json")
+            rp = os.path.join(a.out, f"{slug}_recipe.json")
             with open(rp, "w", encoding="utf-8") as f:
                 json.dump(M.recipe_doc(rec.get("name") or M.default_name(p), p), f, ensure_ascii=False, indent=2)
             out += [still, rp]
@@ -1006,14 +1096,14 @@ def _cli_stills(M, a):
 
 
 def module_cli(M, desc=None):
-    """Entry point for `python moduly/<modul>.py ...` (call it under if __name__ == "__main__")."""
+    """Entry point for `python modules/<module>.py ...` (call it under if __name__ == "__main__")."""
     import argparse
     for st in (sys.stdout, sys.stderr):
         try:
             st.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
-    ap = argparse.ArgumentParser(description=desc or f"{M.MODULE_LABEL}, modul aplikácie {APP_NAME}")
+    ap = argparse.ArgumentParser(description=desc or f"{M.MODULE_LABEL}, a module of {APP_NAME}")
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("stills")
     s.add_argument("recipe")

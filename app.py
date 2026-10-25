@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""CROM: lokálna aplikácia na vizuály pre kapely (server + webové rozhranie).
+"""CROM: a local app for band visuals (server + web interface).
 
   python app.py [--port 8765] [--open]
 
-Rozhranie je v priečinku web/, obrázky kreslia moduly v moduly/ (každý súbor jeden efekt, nájdu sa
-samé). Každá kapela má vlastný projekt v projekty/<nazov>/ s receptami, logom, obalmi a výstupmi.
-Server počúva len na 127.0.0.1, takže ho vidí iba tento počítač.
+The interface lives in web/ (English and Slovak), the pictures are drawn by the modules in modules/
+(one file per effect, found automatically). Every band has its own project in projects/<name>/ with
+recipes, logos, covers and outputs. The server listens on 127.0.0.1 only, so only this computer sees it.
 """
 import argparse
 import collections
@@ -32,16 +32,16 @@ import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 from fontTools.ttLib import TTFont  # noqa: E402
 
-import jadro  # noqa: E402
-from jadro import Project  # noqa: E402
+import core  # noqa: E402
+from core import Project  # noqa: E402
 import ai  # noqa: E402
 
 APP_VERSION = "2.0"
 WEB_DIR = os.path.join(HERE, "web")
-FONT_DIR = jadro.FONT_DIR
+FONT_DIR = core.FONT_DIR
 MAX_BODY = 40 * 1024 * 1024
 DRAFTS_KEPT = 6
-RESERVED = {"aplikacia", "_nahlady", "snimky"}
+RESERVED = {"app", "_previews", "stills"}
 OUT_EXT = {".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm", ".png": "image/png",
            ".jpg": "image/jpeg", ".json": "application/json"}
 VIDEO_EXT = (".mp4", ".mov", ".webm")
@@ -49,7 +49,7 @@ ASSET_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                 ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
                 ".ico": "image/x-icon", ".woff2": "font/woff2", ".json": "application/json"}
-NEVER_SERVE = {"_nastavenia.json"}
+NEVER_SERVE = {"_settings.json", "_nastavenia.json"}
 WIN = os.name == "nt"
 DEFAULT_PROJECT = "demo"
 PART_RE = re.compile(r"_(\d)_[a-z]+_")
@@ -85,7 +85,7 @@ class ApiError(Exception):
 # ----------------------------------------------------------------------------------------------
 
 def all_modules():
-    return jadro.discover()
+    return core.discover()
 
 
 def project(slug=None):
@@ -93,7 +93,7 @@ def project(slug=None):
     if slug:
         P = Project.get(slug)
         if P is None:
-            raise ApiError(404, f"Projekt {slug} neexistuje")
+            raise ApiError(404, f"Project {slug} does not exist")
         return P
     lst = Project.list_all()
     for P in lst:
@@ -101,22 +101,22 @@ def project(slug=None):
             return P
     if lst:
         return lst[0]
-    return Project.create("Moja kapela", "Prvý projekt, premenuj ho v projekt.json.")
+    return Project.create("My band", "The first project, rename it in project.json.")
 
 
 def modules_for(P):
-    return jadro.available_for(all_modules(), P)
+    return core.available_for(all_modules(), P)
 
 
 def mod(name, P):
     mods = modules_for(P)
     if not mods:
-        raise ValueError("V tomto projekte nie je dostupný žiadny modul")
+        raise ValueError("No module is available in this project")
     if not name:
         return next(iter(mods.values()))
-    M = mods.get(str(name))
+    M = mods.get(core.module_id(name))
     if M is None:
-        raise ValueError(f"Modul {name} v projekte {P.name} nie je")
+        raise ValueError(f"The module {name} is not in the project {P.name}")
     return M
 
 
@@ -126,13 +126,13 @@ def module_info(M):
 
 
 def safe_slug(text):
-    s = jadro.slugify(text) or "bez_nazvu"
-    return "vystup_" + s if s in RESERVED else s
+    s = core.slugify(text) or "untitled"
+    return "output_" + s if s in RESERVED else s
 
 
 def preview_size(M, params, h):
     """Preview size for a requested height, keeping the output's shape."""
-    ow, oh = jadro.parse_res(M.merge(params)["res"])
+    ow, oh = core.parse_res(M.merge(params)["res"])
     h = int(max(72, min(int(h), 2160)))
     w = int(round(h * ow / oh / 2.0)) * 2
     return max(2, w), h
@@ -140,7 +140,7 @@ def preview_size(M, params, h):
 
 def draft_res(res):
     """Quick preview size: the long side 960 px, the output's shape kept."""
-    w, h = jadro.parse_res(res)
+    w, h = core.parse_res(res)
     s = 960.0 / max(w, h)
     return f"{int(round(w * s / 2)) * 2}x{int(round(h * s / 2)) * 2}"
 
@@ -166,7 +166,7 @@ def jpeg(frame, q=92):
     ok, buf = cv2.imencode(".jpg", np.ascontiguousarray(flatten(frame)[..., ::-1]),
                            [int(cv2.IMWRITE_JPEG_QUALITY), int(q)])
     if not ok:
-        raise RuntimeError("JPEG sa nepodaril")
+        raise RuntimeError("Could not encode the JPEG")
     return buf.tobytes()
 
 
@@ -177,7 +177,7 @@ def png(frame):
         bgr = np.ascontiguousarray(frame[..., ::-1])
     ok, buf = cv2.imencode(".png", bgr, [int(cv2.IMWRITE_PNG_COMPRESSION), 1])
     if not ok:
-        raise RuntimeError("PNG sa nepodaril")
+        raise RuntimeError("Could not encode the PNG")
     return buf.tobytes()
 
 
@@ -247,7 +247,7 @@ class Previews:
         """One exact frame at the output resolution. Not cached: full size is rarely asked for twice."""
         with self.lock:
             p = M.merge(params)
-            W, H = jadro.parse_res(p["res"])
+            W, H = core.parse_res(p["res"])
             R = make_renderer(M, p, W, H, P)
             return R.frame(float(t), clean=False), p, W, H
 
@@ -297,10 +297,10 @@ class Jobs:
                    "title": M.default_name(p), "slug": slug, "params": p,
                    "state": "queued", "done": 0, "total": int(round(tl["total"] * fps)),
                    "split": int(round(tl.get("t1", tl["total"]) * fps)), "fps_out": fps,
-                   "rate": 0.0, "eta": None, "msg": "Čaká vo fronte", "files": [], "created": now_s(),
+                   "rate": 0.0, "eta": None, "msg": "Waiting in the queue", "files": [], "created": now_s(),
                    "started": None, "ended": None, "sec": None, "hash": hash_, "batch": batch,
                    "particles": None, "warnings": [], "cancel": False,
-                   "format": jadro.out_format(p, kind == "draft") if "bg_mode" in p else "mp4"}
+                   "format": core.out_format(p, kind == "draft") if "bg_mode" in p else "mp4"}
             if kind == "draft":
                 # a new quick preview replaces any older one that has not finished yet
                 for j in self.items:
@@ -367,11 +367,11 @@ class Jobs:
     def _cancel_locked(self, j):
         if j["state"] == "queued":
             j["state"] = "cancelled"
-            j["msg"] = "Zrušené"
+            j["msg"] = "Cancelled"
             j["ended"] = now_s()
         elif j["state"] == "running":
             j["cancel"] = True
-            j["msg"] = "Ruším…"
+            j["msg"] = "Cancelling…"
             if self.current is j and self.proc is not None:
                 kill_tree(self.proc.pid)
 
@@ -385,7 +385,7 @@ class Jobs:
                 job = next(j for j in self.items if j["state"] == "queued")
                 job["state"] = "running"
                 job["started"] = now_s()
-                job["msg"] = "Spúšťam"
+                job["msg"] = "Starting"
                 self.current = job
             try:
                 self._run(job)
@@ -393,7 +393,7 @@ class Jobs:
                 traceback.print_exc()
                 with self.lock:
                     job["state"] = "error"
-                    job["msg"] = f"Chyba servera: {e}"
+                    job["msg"] = f"Server error: {e}"
             finally:
                 with self.lock:
                     self.current = None
@@ -406,8 +406,8 @@ class Jobs:
         os.makedirs(out_dir, exist_ok=True)
         M = all_modules().get(job["module"])
         if M is None:
-            raise RuntimeError(f"Modul {job['module']} zmizol")
-        rec = os.path.join(out_dir, f".{job['file_slug']}_vstup.json")
+            raise RuntimeError(f"The module {job['module']} is gone")
+        rec = os.path.join(out_dir, f".{job['file_slug']}_input.json")
         with open(rec, "w", encoding="utf-8") as f:
             json.dump(M.recipe_doc(job["name"], job["params"]), f, ensure_ascii=False, indent=2)
         cmd = [sys.executable, os.path.abspath(M.__file__), "render", rec, out_dir, "--slug", job["file_slug"],
@@ -456,7 +456,7 @@ class Jobs:
                     job["particles"] = ev.get("particles")
                     job["warnings"] = ev.get("warnings") or []
                     planned = list(ev.get("files") or [])
-                    job["msg"] = f"Renderujem na {ev.get('workers')} jadrách"
+                    job["msg"] = f"Rendering on {ev.get('workers')} cores"
                 elif kind == "progress":
                     job["done"] = ev.get("done", 0)
                     job["total"] = ev.get("total", job["total"])
@@ -483,14 +483,14 @@ class Jobs:
                 job["state"] = "done"
                 job["done"] = job["total"]
                 job["eta"] = 0
-                job["msg"] = "Hotovo" if job["kind"] == "final" else "Náhľad je pripravený"
+                job["msg"] = "Done" if job["kind"] == "final" else "The preview is ready"
             else:
                 job["state"] = "cancelled" if cancelled else "error"
                 if cancelled:
-                    job["msg"] = "Zrušené"
+                    job["msg"] = "Cancelled"
                 else:
                     tail = [ln for ln in err_tail if ln.strip()]
-                    job["msg"] = last_err or (tail[-1] if tail else f"Render skončil s kódom {rc}")
+                    job["msg"] = last_err or (tail[-1] if tail else f"The render exited with code {rc}")
         if job["state"] != "done":
             self._cleanup(job, planned)
         elif job["kind"] == "draft":
@@ -509,7 +509,7 @@ class Jobs:
                 pass
         try:
             for fn in os.listdir(d):
-                if fn.startswith(f".{job['file_slug']}_") and fn.endswith("_stav.pkl"):
+                if fn.startswith(f".{job['file_slug']}_") and fn.endswith("_state.pkl"):
                     os.remove(os.path.join(d, fn))
         except OSError:
             pass
@@ -526,7 +526,7 @@ class Jobs:
     def _rotate_drafts(self, draft_dir):
         try:
             files = [os.path.join(draft_dir, f) for f in os.listdir(draft_dir)
-                     if f.lower().endswith(VIDEO_EXT) and "_nahlad_" in f]
+                     if f.lower().endswith(VIDEO_EXT) and "_preview_" in f]
         except OSError:
             return
         files.sort(key=os.path.getmtime, reverse=True)
@@ -555,7 +555,7 @@ def recipe_files(P):
             with open(fp, "r", encoding="utf-8") as f:
                 d = json.load(f)
             p = d.get("params", {}) if isinstance(d, dict) else {}
-            M = mods.get(str(d.get("module") or "titulky"))
+            M = mods.get(core.module_id(d.get("module")))
             if M is None:
                 out.append({"file": fn, "name": d.get("name") or fn[:-5], "saved": d.get("saved"),
                             "module": d.get("module"), "title": "", "broken": True, "mtime": os.path.getmtime(fp)})
@@ -573,7 +573,7 @@ def recipe_files(P):
 def recipe_path(P, fn):
     fn = os.path.basename(str(fn or ""))
     if not re.fullmatch(r"[A-Za-z0-9_.\-]+\.json", fn):
-        raise ValueError("Neplatný názov receptu")
+        raise ValueError("Invalid recipe name")
     return os.path.join(P.recipe_dir, fn)
 
 
@@ -581,15 +581,15 @@ def load_any_recipe(fp):
     """A recipe of any module: the file says which, older files without the field are titles."""
     with open(fp, "r", encoding="utf-8") as f:
         d = json.load(f)
-    mid = str(d.get("module") or "titulky") if isinstance(d, dict) else "titulky"
+    mid = core.module_id(d.get("module") if isinstance(d, dict) else None)
     M = all_modules().get(mid)
     if M is None:
-        raise ValueError(f"Recept patrí modulu {mid}, ktorý tu nie je")
+        raise ValueError(f"The recipe belongs to the module {mid}, which is not here")
     return M.load_recipe(fp)
 
 
 def save_recipe(P, body):
-    name = str(body.get("name") or "").strip() or "Recept"
+    name = str(body.get("name") or "").strip() or "Recipe"
     M = mod(body.get("module"), P)
     params = M.merge(body.get("params") or {})
     fn = body.get("file")
@@ -597,7 +597,7 @@ def save_recipe(P, body):
     if fn and body.get("overwrite"):
         fp = recipe_path(P, fn)
     else:
-        base = jadro.slugify(name) or "recept"
+        base = core.slugify(name) or "recipe"
         fp = os.path.join(rd, base + ".json")
         n = 2
         while os.path.exists(fp):
@@ -615,7 +615,7 @@ def save_recipe(P, body):
 def trash_recipe(P, fn):
     fp = recipe_path(P, fn)
     if not os.path.isfile(fp):
-        raise FileNotFoundError("Recept neexistuje")
+        raise FileNotFoundError("The recipe does not exist")
     os.makedirs(P.trash_dir, exist_ok=True)
     dst = os.path.join(P.trash_dir, os.path.basename(fp))
     if os.path.exists(dst):
@@ -629,9 +629,9 @@ def add_font(name, data):
     stem, ext = os.path.splitext(name)
     ext = ext.lower()
     if ext not in (".ttf", ".otf"):
-        raise ValueError("Písmo musí byť .ttf alebo .otf")
+        raise ValueError("A font must be .ttf or .otf")
     if not data or len(data) > 30 * 1024 * 1024:
-        raise ValueError("Súbor je prázdny alebo príliš veľký")
+        raise ValueError("The file is empty or too large")
     try:
         tt = TTFont(io.BytesIO(data), lazy=True)
         cmap = tt.getBestCmap() or {}
@@ -640,8 +640,8 @@ def add_font(name, data):
     except Exception:
         ok = False
     if not ok:
-        raise ValueError("Toto nie je čitateľné písmo s latinkou")
-    stem = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem).strip("_") or "pismo"
+        raise ValueError("This is not a readable font with Latin letters")
+    stem = re.sub(r"[^A-Za-z0-9_\-]+", "_", stem).strip("_") or "font"
     fp = os.path.join(FONT_DIR, stem + ext)
     n = 2
     while os.path.exists(fp):
@@ -653,33 +653,34 @@ def add_font(name, data):
     with open(fp, "wb") as f:
         f.write(data)
     try:
-        jadro.get_font(os.path.basename(fp))
+        core.get_font(os.path.basename(fp))
     except Exception as e:
         os.remove(fp)
-        raise ValueError(f"Písmo sa nedá použiť: {e}")
+        raise ValueError(f"The font cannot be used: {e}")
     return os.path.basename(fp)
 
 
 def add_asset(P, kind, name, data):
     """A logo or a cover saved byte for byte into the project (never resized or re-encoded)."""
-    if kind not in jadro.ASSET_KINDS:
-        raise ValueError("Neznámy druh súboru")
+    kind = "cover" if kind == "obal" else kind
+    if kind not in core.ASSET_KINDS:
+        raise ValueError("Unknown kind of file")
     name = os.path.basename(urllib.parse.unquote(name or "")).strip()
     stem, ext = os.path.splitext(name)
     ext = ext.lower()
-    allowed = jadro.ASSET_KINDS[kind][1]
+    allowed = core.ASSET_KINDS[kind][1]
     if ext not in allowed:
-        raise ValueError("Povolené sú " + ", ".join(allowed))
+        raise ValueError("Allowed: " + ", ".join(allowed))
     if not data or len(data) > MAX_BODY:
-        raise ValueError("Súbor je prázdny alebo príliš veľký")
+        raise ValueError("The file is empty or too large")
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None or img.ndim < 2 or min(img.shape[:2]) < 16:
-        raise ValueError("Obrázok sa nedá prečítať")
+        raise ValueError("The image cannot be read")
     h, w = img.shape[:2]
     if max(w, h) > 8192:
-        raise ValueError("Obrázok je väčší ako 8192 px")
+        raise ValueError("The image is larger than 8192 px")
     has_alpha = img.ndim == 3 and img.shape[2] == 4 and int(img[..., 3].min()) < 255
-    stem = re.sub(r"[^A-Za-z0-9_\-]+", "_", jadro.slugify(stem) or stem).strip("_") or kind
+    stem = re.sub(r"[^A-Za-z0-9_\-]+", "_", core.slugify(stem) or stem).strip("_") or kind
     d = P.asset_dir(kind)
     os.makedirs(d, exist_ok=True)
     fp = os.path.join(d, stem + ext)
@@ -695,7 +696,7 @@ def add_asset(P, kind, name, data):
             f.write(data)
     warn = []
     if kind == "logo" and not has_alpha:
-        warn.append("Logo nemá priehľadné pozadie, efekty ho budú brať ako celý obdĺžnik.")
+        warn.append("The logo has no transparent background, the effects will treat it as a full rectangle.")
     return {"file": os.path.basename(fp), "kind": kind, "size": [w, h], "alpha": has_alpha, "warnings": warn}
 
 
@@ -727,7 +728,7 @@ def _version_files(vd, base_rel):
         if kind == "recipe":
             try:
                 with open(fp, "r", encoding="utf-8") as f:
-                    module = str(json.load(f).get("module") or "titulky")
+                    module = core.module_id(json.load(f).get("module"))
             except Exception:
                 pass
         files.append({"name": fn, "rel": f"{base_rel}/{fn}", "size": os.path.getsize(fp), "kind": kind,
@@ -759,7 +760,7 @@ def list_outputs(P):
                     mt.append(os.path.getmtime(os.path.join(vd, f["name"])))
                 except OSError:
                     pass
-            versions.append({"v": v, "rel": f"{slug}/{v}", "module": module or "titulky",
+            versions.append({"v": v, "rel": f"{slug}/{v}", "module": module or "titles",
                              "mtime": max(mt) if mt else 0, "files": files})
         if versions:
             versions.sort(key=lambda r: int(r["v"][1:]), reverse=True)
@@ -771,10 +772,10 @@ def list_outputs(P):
 def save_still(M, P, params, t):
     fr, p, W, H = PREVIEWS.still(M, params, t, P)
     slug = safe_slug(M.file_slug(p))
-    d = os.path.join(P.out_root, slug, "snimky")
+    d = os.path.join(P.out_root, slug, "stills")
     os.makedirs(d, exist_ok=True)
     fp = os.path.join(d, f"{slug}_t{float(t):05.2f}_{W}x{H}.png")
-    jadro.write_png(fp, fr)
+    core.write_png(fp, fr)
     return os.path.relpath(fp, P.out_root).replace("\\", "/")
 
 
@@ -783,13 +784,13 @@ def output_file(P, rel):
     output root, never inside the app folder, no dot segments, never the settings file."""
     parts = [s for s in str(rel).replace("\\", "/").split("/") if s]
     if not parts or any(s.startswith(".") for s in parts) or parts[-1] in NEVER_SERVE:
-        raise ApiError(404, "Nenájdené")
+        raise ApiError(404, "Not found")
     root = P.out_root
     fp = os.path.join(root, *parts)
     ext = os.path.splitext(fp)[1].lower()
     blocked = inside(HERE, fp) and not inside(HERE, root)   # app code, unless the project keeps its outputs inside
     if ext not in OUT_EXT or not inside(root, fp) or blocked or not os.path.isfile(fp):
-        raise ApiError(404, "Nenájdené")
+        raise ApiError(404, "Not found")
     return fp, OUT_EXT[ext]
 
 
@@ -804,18 +805,19 @@ def open_folder(P, rel):
         target = P.dir
     elif rel.startswith("@assets:"):
         kind = rel.split(":", 1)[1]
-        if kind not in jadro.ASSET_KINDS:
-            raise ValueError("Neznámy druh súboru")
+        kind = "cover" if kind == "obal" else kind
+        if kind not in core.ASSET_KINDS:
+            raise ValueError("Unknown kind of file")
         target = P.asset_dir(kind)
         os.makedirs(target, exist_ok=True)
     else:
         target = os.path.join(root, *rel.split("/")) if rel else root
     if not (inside(root, target) or inside(HERE, target)):
-        raise ValueError("Mimo priečinkov projektu")
+        raise ValueError("Outside the project folders")
     if os.path.isfile(target):
         target = os.path.dirname(target)
     if not os.path.isdir(target):
-        raise FileNotFoundError("Priečinok neexistuje")
+        raise FileNotFoundError("The folder does not exist")
     if WIN:
         os.startfile(target)  # noqa: S606 - opens Explorer on the user's own machine
     elif sys.platform == "darwin":
@@ -838,12 +840,12 @@ def schema_doc(P, M):
     return {"module": M.MODULE_ID, "label": M.MODULE_LABEL, "desc": getattr(M, "MODULE_DESC", ""),
             "batch": getattr(M, "BATCH", None), "phases": getattr(M, "PHASES", None),
             "modules": [module_info(m) for m in mods.values()],
-            "module_errors": dict(jadro.MODULE_ERRORS),
+            "module_errors": dict(core.MODULE_ERRORS),
             "project": P.info(), "projects": [pr.info() for pr in Project.list_all()],
             "schema": M.SCHEMA, "presets": M.PRESETS, "lanes": M.LANES, "defaults": M.defaults(),
-            "fonts": jadro.list_fonts(), "engine": getattr(M, "ENGINE_VERSION", 1),
-            "app": APP_VERSION, "app_name": jadro.APP_NAME, "tagline": jadro.APP_TAGLINE,
-            "core": jadro.CORE_VERSION, "out_root": P.out_root, "cpus": os.cpu_count(), "started": STARTED}
+            "fonts": core.list_fonts(), "engine": getattr(M, "ENGINE_VERSION", 1),
+            "app": APP_VERSION, "app_name": core.APP_NAME, "tagline": core.APP_TAGLINE,
+            "core": core.CORE_VERSION, "out_root": P.out_root, "cpus": os.cpu_count(), "started": STARTED}
 
 
 # ----------------------------------------------------------------------------------------------
@@ -897,7 +899,7 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         if n > MAX_BODY:
             self.close_connection = True  # the unread body would poison the next request
-            raise ApiError(413, "Príliš veľké")
+            raise ApiError(413, "Too large")
         self._raw = self.rfile.read(n) if n else b""
         return self._raw
 
@@ -912,9 +914,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._jcache = json.loads(raw.decode("utf-8")) if raw else {}
         except ValueError:
-            raise ApiError(400, "Zlý JSON")
+            raise ApiError(400, "Bad JSON")
         if not isinstance(self._jcache, dict):
-            raise ApiError(400, "Zlý JSON")
+            raise ApiError(400, "Bad JSON")
         return self._jcache
 
     def _project(self, q):
@@ -969,9 +971,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def _guard(self, post):
         if not self._host_ok():
-            raise ApiError(403, "Nepovolený hostiteľ")
+            raise ApiError(403, "Host not allowed")
         if post and self.headers.get("X-Crom") != "1":
-            raise ApiError(403, "Chýba hlavička aplikácie")
+            raise ApiError(403, "The app header is missing")
 
     def _dispatch(self, post):
         url = urllib.parse.urlsplit(self.path)
@@ -990,7 +992,7 @@ class Handler(BaseHTTPRequestHandler):
         except ApiError as e:
             self._json({"error": e.msg}, e.status)
         except (FileNotFoundError, KeyError) as e:
-            self._json({"error": str(e) or "Nenájdené"}, 404)
+            self._json({"error": str(e) or "Not found"}, 404)
         except ValueError as e:
             self._json({"error": str(e)}, 400)
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
@@ -1017,7 +1019,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/projects":
             self._json({"projects": [pr.info() for pr in Project.list_all()], "default": project().slug})
         elif path == "/api/fonts":
-            self._json({"fonts": jadro.list_fonts()})
+            self._json({"fonts": core.list_fonts()})
         elif path == "/api/jobs":
             self._json({"jobs": JOBS.list()})
         elif path == "/api/sim":
@@ -1041,24 +1043,24 @@ class Handler(BaseHTTPRequestHandler):
             slug, _, rel = path[len("/files/"):].partition("/")
             P = Project.get(slug)
             if P is None:
-                raise ApiError(404, "Nenájdené")
+                raise ApiError(404, "Not found")
             fp, ctype = output_file(P, rel)
             self._file(fp, ctype)
         elif path.startswith("/asset/"):
             parts = path[len("/asset/"):].split("/")
             if len(parts) != 3:
-                raise ApiError(404, "Nenájdené")
+                raise ApiError(404, "Not found")
             P = Project.get(parts[0])
             fp = P.asset_path(parts[1], parts[2]) if P else None
             if not fp or not os.path.isfile(fp):
-                raise ApiError(404, "Nenájdené")
+                raise ApiError(404, "Not found")
             self._file(fp, ASSET_TYPES.get(os.path.splitext(fp)[1].lower(), "application/octet-stream"))
         elif path.startswith("/fonts/"):
             fn = os.path.basename(path)
             fp = os.path.join(FONT_DIR, fn)
             ext = os.path.splitext(fn)[1].lower()
             if ext not in (".ttf", ".otf") or not os.path.isfile(fp):
-                raise ApiError(404, "Nenájdené")
+                raise ApiError(404, "Not found")
             self._file(fp, "font/ttf" if ext == ".ttf" else "font/otf", cache=True)
         elif path == "/api/ai/status":
             self._json(ai.status())
@@ -1069,7 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
             fp = os.path.join(WEB_DIR, *[s for s in rel.split("/") if s])
             ext = os.path.splitext(fp)[1].lower()
             if not inside(WEB_DIR, fp) or not os.path.isfile(fp) or ext not in STATIC_TYPES:
-                raise ApiError(404, "Nenájdené")
+                raise ApiError(404, "Not found")
             self._file(fp, STATIC_TYPES[ext])
 
     # ---------- POST ----------
@@ -1097,7 +1099,7 @@ class Handler(BaseHTTPRequestHandler):
             M = mod(b.get("module"), P)
             p = M.merge(b.get("params") or {})
             self._json({"timeline": M.timeline(p), "name": M.default_name(p), "slug": safe_slug(M.file_slug(p)),
-                        "format": jadro.out_format(p, False) if "bg_mode" in p else "mp4"})
+                        "format": core.out_format(p, False) if "bg_mode" in p else "mp4"})
         elif path == "/api/strip":
             b = self._jbody()
             P = self._project(q)
@@ -1133,7 +1135,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/cancel":
             j = JOBS.cancel(str(self._jbody().get("id")))
             if j is None:
-                raise ApiError(404, "Úloha neexistuje")
+                raise ApiError(404, "The job does not exist")
             self._json({"job": j})
         elif path == "/api/jobs/clear":
             JOBS.clear_finished()
@@ -1144,7 +1146,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json(trash_recipe(self._project(q), self._jbody().get("file")))
         elif path == "/api/font":
             fn = add_font(self.headers.get("X-Filename"), self._body())
-            self._json({"file": fn, "fonts": jadro.list_fonts()})
+            self._json({"file": fn, "fonts": core.list_fonts()})
         elif path == "/api/asset":
             P = project((q.get("project") or [""])[0] or self.headers.get("X-Project") or None)
             r = add_asset(P, self.headers.get("X-Kind") or (q.get("kind") or [""])[0],
@@ -1154,13 +1156,13 @@ class Handler(BaseHTTPRequestHandler):
             self._json(r)
         elif path == "/api/project":
             b = self._jbody()
-            P = Project.create(b.get("name"), b.get("popis") or "")
+            P = Project.create(b.get("name"), b.get("description") or b.get("popis") or "")
             self._json({"project": P.info(), "projects": [pr.info() for pr in Project.list_all()]})
         elif path == "/api/modules/reload":
-            jadro.discover(reload=True)
+            core.discover(reload=True)
             P = self._project(q)
             self._json({"modules": [module_info(m) for m in modules_for(P).values()],
-                        "module_errors": dict(jadro.MODULE_ERRORS)})
+                        "module_errors": dict(core.MODULE_ERRORS)})
         elif path == "/api/still":
             b = self._jbody()
             P = self._project(q)
@@ -1176,7 +1178,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/ai/cancel":
             self._json(ai.cancel(self._jbody().get("id")))
         else:
-            raise ApiError(404, "Nenájdené")
+            raise ApiError(404, "Not found")
 
 
 class Server(ThreadingHTTPServer):
@@ -1191,27 +1193,32 @@ def main():
             st.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
             pass
-    ap = argparse.ArgumentParser(description=f"{jadro.APP_NAME}, aplikácia")
+    ap = argparse.ArgumentParser(description=f"{core.APP_NAME}, the app")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--open", action="store_true", help="otvoriť prehliadač")
+    ap.add_argument("--open", action="store_true", help="open the browser")
     a = ap.parse_args()
     Handler.port = a.port
     url = f"http://127.0.0.1:{a.port}/"
     try:
         srv = Server(("127.0.0.1", a.port), Handler)
     except OSError:
-        print(f"Port {a.port} je obsadený. Aplikácia už asi beží: {url}")
+        print(f"Port {a.port} is already in use. The app is probably running already: {url}")
         if a.open:
             webbrowser.open(url)
         sys.exit(1)
+    moved = core.migrate_legacy()
+    if moved:
+        print("Renamed the folders of an older version to the new English names:", flush=True)
+        for line in moved:
+            print("  " + line, flush=True)
     mods = all_modules()
     P = project()
-    print(f"{jadro.APP_NAME} {APP_VERSION} ({jadro.APP_TAGLINE}) beží na {url}", flush=True)
-    print(f"Moduly: {', '.join(m.MODULE_LABEL for m in mods.values()) or 'žiadne'}", flush=True)
-    for name, err in jadro.MODULE_ERRORS.items():
-        print(f"  Modul {name} sa nenačítal: {err}", flush=True)
-    print(f"Projekty: {', '.join(pr.name for pr in Project.list_all())} (predvolený {P.name})", flush=True)
-    print("Zastavíš ju klávesmi Ctrl+C alebo zatvorením tohto okna.", flush=True)
+    print(f"{core.APP_NAME} {APP_VERSION} ({core.APP_TAGLINE}) is running on {url}", flush=True)
+    print(f"Modules: {', '.join(m.MODULE_LABEL for m in mods.values()) or 'none'}", flush=True)
+    for name, err in core.MODULE_ERRORS.items():
+        print(f"  The module {name} did not load: {err}", flush=True)
+    print(f"Projects: {', '.join(pr.name for pr in Project.list_all())} (default {P.name})", flush=True)
+    print("Stop it with Ctrl+C or by closing this window.", flush=True)
     if a.open:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:
@@ -1221,7 +1228,7 @@ def main():
     finally:
         JOBS.shutdown()
         srv.server_close()
-        print("Koniec.")
+        print("Bye.")
 
 
 if __name__ == "__main__":

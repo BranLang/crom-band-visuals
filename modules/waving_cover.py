@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Obal (vlniaci sa): modul aplikacie CROM. Obal albumu sa jemne vlni ako zavesena latka.
+"""Waving cover: a CROM module. The album cover waves gently like a hanging cloth.
 
-Port nodu NULL VOID CurtainWave (ComfyUI), z ktoreho modul vznikol. Je to iba
-geometricke posunutie pixelov a jemne tienovanie zahybov, ziadny pixel sa nevymysla, takze logo
-a nazov albumu sa neposkodia. Obdlzniky "pin:" ostanu uplne nehybne (pixel po pixeli zdroj),
-ostatne obdlzniky sa hybu ako jeden celok, aby sa pismena neohybali.
+A port of the NULL VOID CurtainWave node (ComfyUI) the module grew out of. It only moves pixels
+geometrically and adds mild fold shading; no pixel is invented, so the logo and the album title
+are never damaged. "pin:" boxes stay perfectly still (the source pixel for pixel), other boxes
+move as one rigid piece so the letters do not bend.
 
-Video je slucka: kazdy usek (varianta vlny) zacina aj konci v rovnakom stave, takze useky
-s roznymi variantmi sa daju lubovolne radit za sebou bez viditelneho strihu.
+The video is a loop: every segment (wave variant) starts and ends in the same state, so segments
+with different variants can be chained in any order without a visible cut.
 
-  python moduly/obal.py stills recept.json priecinok [--times 0,2.5,5] [--res 1080x1080]
-  python moduly/obal.py render recept.json priecinok [--res 1080x1080] [--draft] [--project projekty/demo]
+  python modules/waving_cover.py stills recipe.json folder [--times 0,2.5,5] [--res 1080x1080]
+  python modules/waving_cover.py render recipe.json folder [--res 1080x1080] [--draft] [--project projects/demo]
 """
 import math
 import os
@@ -29,19 +29,19 @@ if APP not in sys.path:
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
-import jadro as E  # noqa: E402
+import core as E  # noqa: E402
 
-MODULE_ID = "obal"
-MODULE_LABEL = "Obal (vlniaci sa)"
+MODULE_ID = "waving_cover"
+MODULE_LABEL = "Waving cover"
 ENGINE_VERSION = 1
 MODULE_ORDER = 30
-MODULE_DESC = "Obal albumu sa jemne vlní ako zavesená látka. Logo a názov ostanú nepoškodené, video je slučka."
+MODULE_DESC = "The album cover waves gently like a hanging cloth. The logo and title stay intact, the video loops."
 AI_DESC = ("A still album cover waves gently like a hanging cloth (pinned at the top, more motion towards the "
            "bottom, folds travelling down). Pure geometric warping plus mild fold shading, nothing is redrawn. "
            "'boxes' are rectangles in cover pixels: 'pin:x0,y0,x1,y1' stays perfectly still (use it for the band "
            "logo and the album title), plain 'x0,y0,x1,y1' moves rigidly without bending. The video is a chain of "
            "seamless loop segments; 'order' lists the wave variant of each segment.")
-RENDER_MSG = "Pripravujem vlny obalu"
+RENDER_MSG = "Preparing the cover waves"
 
 # (fx, fy, cycles per segment, amplitude, phase); fx / fy in cycles per cover height
 BASE_WAVES = [
@@ -56,7 +56,7 @@ DEMO_COVER = "cover.png"
 # One keyframe (the loop point) and flat I/P quality: a keyframe in the middle shows as a texture
 # "pulse" on fine hatching (measured on the original cover when the node was built).
 X264_EXTRA = ["-tune", "grain", "-x264-params", "ipratio=1.0:pbratio=1.0:no-mbtree=1:keyint=infinite:scenecut=0"]
-RES = E.RES_ALL + [["1200x1200", "Štvorec 1200×1200"]]
+RES = E.RES_ALL + [["1200x1200", "Square 1200×1200"]]
 
 
 def variation_waves(seed):
@@ -101,49 +101,49 @@ def parse_order(text):
 # ----------------------------------------------------------------------------------------------
 
 SCHEMA = [
-    {"id": "cover", "label": "Obal", "params": [
-        E._p("cover", "Obrázok obalu", "asset", DEMO_COVER, "geo", kind="obal",
-             hint="Obrázok z priečinka obaly v projekte. Nový pridáš tlačidlom Obaly."),
-        E._p("fit", "Umiestnenie", "select", "contain", "geo",
-             options=[["contain", "Celý obal v zábere"], ["cover", "Vyplniť záber (oreže okraje)"]]),
-        E.F("size", "Veľkosť obalu", 100.0, 20, 150, 1, "%", "geo"),
-        E._p("bg_color", "Farba okolo obalu", "color", "#000000",
-             hint="Plocha, kam obal nesiahne. Pri priehľadnom pozadí ostane priehľadná."),
+    {"id": "cover", "label": "Cover", "params": [
+        E._p("cover", "Cover image", "asset", DEMO_COVER, "geo", kind="cover",
+             hint="An image from the project's covers folder. Add new ones with the upload button."),
+        E._p("fit", "Fit", "select", "contain", "geo",
+             options=[["contain", "Whole cover in frame"], ["cover", "Fill the frame (crops the edges)"]]),
+        E.F("size", "Cover size", 100.0, 20, 150, 1, "%", "geo"),
+        E._p("bg_color", "Colour around the cover", "color", "#000000",
+             hint="The area the cover does not reach. With a transparent background it stays transparent."),
     ]},
-    {"id": "wave", "label": "Vlnenie", "params": [
-        E.F("amp", "Sila vlnenia do strán", 1.0, 0, 8, 0.05, "% výšky",
-            hint="1 % = 12 px na obale 1200 px (pôvodná jemná verzia)."),
-        E.F("vert", "Pohyb hore a dolu", 0.25, 0, 4, 0.05, "% výšky"),
-        E.F("stiff", "Tuhosť hore", 1.8, 0.3, 6, 0.1, "", "geo",
-            hint="Väčšie číslo = horná časť sa hýbe menej, pohyb je viac dole."),
-        E.F("top_motion", "Pohyb úplne hore", 0.03, 0, 1, 0.01, "", "geo",
-            hint="0 = horný okraj ako pribitý, 1 = celý obal sa hýbe rovnako."),
-        E.F("gust", "Poryvy vetra", 0.6, 0, 3, 0.05, hint="Sila náhodných vĺn v strede každého úseku."),
-        E.F("shading", "Tiene záhybov", 0.10, 0, 0.5, 0.01),
+    {"id": "wave", "label": "Waving", "params": [
+        E.F("amp", "Sideways wave strength", 1.0, 0, 8, 0.05, "% of height",
+            hint="1 % = 12 px on a 1200 px cover (the original gentle version)."),
+        E.F("vert", "Up and down motion", 0.25, 0, 4, 0.05, "% of height"),
+        E.F("stiff", "Stiffness at the top", 1.8, 0.3, 6, 0.1, "", "geo",
+            hint="A bigger number = the top moves less and the motion is lower down."),
+        E.F("top_motion", "Motion at the very top", 0.03, 0, 1, 0.01, "", "geo",
+            hint="0 = the top edge is as if nailed down, 1 = the whole cover moves the same."),
+        E.F("gust", "Wind gusts", 0.6, 0, 3, 0.05, hint="Strength of the random waves in the middle of each segment."),
+        E.F("shading", "Fold shading", 0.10, 0, 0.5, 0.01),
     ]},
-    {"id": "locks", "label": "Ochrana loga a názvu", "params": [
-        E._p("boxes", "Chránené obdĺžniky", "textarea", DEMO_BOXES, "geo",
-             hint="V pixeloch obalu, jeden na riadok: x0,y0,x1,y1. S pin: na začiatku ostane úplne nehybný "
-                  "(logo, názov albumu), bez neho sa hýbe ako celok a neohýba sa."),
-        E.F("feather", "Mäkký prechod okolo", 40.0, 1, 400, 1, "px obalu", "geo"),
+    {"id": "locks", "label": "Protect logo and title", "params": [
+        E._p("boxes", "Protected boxes", "textarea", DEMO_BOXES, "geo",
+             hint="In cover pixels, one per line: x0,y0,x1,y1. With pin: in front it stays perfectly still "
+                  "(logo, album title); without it, it moves as one piece and does not bend."),
+        E.F("feather", "Soft edge around", 40.0, 1, 400, 1, "cover px", "geo"),
     ]},
-    {"id": "loop", "label": "Slučka", "params": [
-        E.F("loop", "Dĺžka úseku", 5.0, 1, 30, 0.5, "s", hint="Každý úsek je jedna vlna, začína aj končí rovnako."),
-        E._p("order", "Poradie variantov", "text", "1 6 4 2 5 3 1 5 4 6 3 2",
-             hint="Čísla variantov vlny, jeden úsek za každé číslo. 12 úsekov po 5 s = 60 s."),
+    {"id": "loop", "label": "Loop", "params": [
+        E.F("loop", "Segment length", 5.0, 1, 30, 0.5, "s", hint="Each segment is one wave; it starts and ends the same."),
+        E._p("order", "Variant order", "text", "1 6 4 2 5 3 1 5 4 6 3 2",
+             hint="Wave variant numbers, one segment per number. 12 segments of 5 s = 60 s."),
     ]},
-    {"id": "output", "label": "Výstup", "params": E.output_params(
-        seed=0, seed_hint="Pripočíta sa ku každému číslu varianty. 0 = pôvodné vlny.",
+    {"id": "output", "label": "Output", "params": E.output_params(
+        seed=0, seed_hint="Added to every variant number. 0 = the original waves.",
         res_options=RES, res_default="1080x1080", bg=True,
-        bg_hint="Priehľadné pozadie: ostane iba obal, plocha okolo je priehľadná.")},
+        bg_hint="Transparent background: only the cover remains, the area around it is transparent.")},
 ]
 
 PRESETS = [
-    {"id": "jemny", "label": "Jemné (dodaná verzia)", "params": {}},
-    {"id": "vyraznejsi", "label": "Výraznejšie", "params": {
+    {"id": "gentle", "label": "Gentle (the delivered version)", "params": {}},
+    {"id": "stronger", "label": "Stronger", "params": {
         "amp": 1.5, "vert": 1 / 3, "stiff": 1.6, "top_motion": 0.03, "gust": 0.7, "shading": 0.14,
         "order": "4 5 6 2 1 3 5 4 2 1 6 3"}},
-    {"id": "pokoj", "label": "Skoro nehybné", "params": {"amp": 0.45, "vert": 0.1, "gust": 0.3, "shading": 0.05}},
+    {"id": "calm", "label": "Almost still", "params": {"amp": 0.45, "vert": 0.1, "gust": 0.3, "shading": 0.05}},
 ]
 
 LANES = []
@@ -174,22 +174,22 @@ def timeline(p):
     n = seg_frames(p)
     order = parse_order(p["order"])
     L = n / fps
-    phases = [{"id": f"s{k}", "label": f"Vlna {v}", "t0": round(k * L, 4), "t1": round((k + 1) * L, 4), "video": 1}
+    phases = [{"id": f"s{k}", "label": f"Wave {v}", "t0": round(k * L, 4), "t1": round((k + 1) * L, 4), "video": 1}
               for k, v in enumerate(order)]
     return {"total": len(order) * L, "t1": len(order) * L, "fps": fps, "phases": phases,
-            "markers": [{"t": round(k * L, 3), "label": f"úsek {k + 1}"} for k in range(1, len(order))]}
+            "markers": [{"t": round(k * L, 3), "label": f"segment {k + 1}"} for k in range(1, len(order))]}
 
 
 def _stem(p):
-    return E._ascii_slug(os.path.splitext(str(p.get("cover") or "obal"))[0], "obal")
+    return E._ascii_slug(os.path.splitext(str(p.get("cover") or "cover"))[0], "cover")
 
 
 def default_name(p):
-    return f"Obal {os.path.splitext(str(p.get('cover') or ''))[0] or 'albumu'}"
+    return f"Waving {os.path.splitext(str(p.get('cover') or ''))[0] or 'cover'}"
 
 
 def file_slug(p):
-    return f"{_stem(p)}_vlna"
+    return f"{_stem(p)}_wave"
 
 
 def still_time(p):
@@ -265,17 +265,17 @@ class Renderer:
 
     def _cover_path(self, p):
         self.warn = []
-        fp = E.project_asset(self.ctx, "obal", p["cover"])
+        fp = E.project_asset(self.ctx, "cover", p["cover"])
         if fp is not None:
             self.cover_name = p["cover"]
             return fp
         self.cover_name = None
-        lst = self.ctx.assets("obal") if self.ctx is not None and hasattr(self.ctx, "assets") else []
+        lst = self.ctx.assets("cover") if self.ctx is not None and hasattr(self.ctx, "assets") else []
         if lst:
             self.cover_name = lst[0]
-            self.warn.append(f"Obal {p['cover']} v projekte nie je, použijem {lst[0]}.")
-            return self.ctx.asset_path("obal", lst[0])
-        self.warn.append("V projekte nie je žiadny obal. Pridaj obrázok tlačidlom Obaly.")
+            self.warn.append(f"The cover {p['cover']} is not in the project, using {lst[0]}.")
+            return self.ctx.asset_path("cover", lst[0])
+        self.warn.append("The project has no cover yet. Add an image with the upload button.")
         return None
 
     def _build_geo(self, p):
@@ -285,7 +285,7 @@ class Renderer:
         self.locks = []
         if img is None:
             if fp:
-                self.warn.append("Obal sa nepodarilo načítať.")
+                self.warn.append("The cover could not be read.")
             self.src = None
             return
         h0, w0 = img.shape[:2]
@@ -318,18 +318,18 @@ class Renderer:
         # Lock boxes, given in cover pixels.
         boxes, bad = parse_boxes(p["boxes"])
         if bad:
-            self.warn.append(f"{bad} riadok v chránených obdĺžnikoch nemá tvar x0,y0,x1,y1, vynechal som ho.")
+            self.warn.append(f"{bad} line(s) in the protected boxes do not have the form x0,y0,x1,y1 and were skipped.")
         if boxes and p["boxes"].strip() == DEMO_BOXES and self.cover_name != DEMO_COVER:
-            self.warn.append("Chránené obdĺžniky sú nastavené pre ukážkový obal, pre tento obal som ich vypol. "
-                             "Zadaj obdĺžniky okolo loga a názvu tohto obalu.")
+            self.warn.append("The protected boxes are set for the demo cover, so they are off for this cover. "
+                             "Enter boxes around the logo and title of this cover.")
             boxes = []
         if not boxes:
-            self.warn.append("Žiadny chránený obdĺžnik: logo a názov sa vlnia s obalom.")
+            self.warn.append("No protected box: the logo and title wave with the cover.")
         feather = max(float(p["feather"]) * self.sy, 1e-6)
         X, Y = xs[None, :], ys[:, None]
         for (bx0, by0, bx1, by1), pinned in boxes:
             if bx1 > w0 + 0.5 or by1 > h0 + 0.5:
-                self.warn.append(f"Obdĺžnik {int(bx0)},{int(by0)},{int(bx1)},{int(by1)} siaha mimo obal "
+                self.warn.append(f"The box {int(bx0)},{int(by0)},{int(bx1)},{int(by1)} reaches outside the cover "
                                  f"({w0}×{h0} px).")
             b = (bx0 * self.sx, by0 * self.sy, bx1 * self.sx, by1 * self.sy)
             ddx = np.clip(np.maximum(b[0] - X, X - b[2]), 0, None)
