@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Claude asistent: z textovej požiadavky nastaví parametre, pozrie si náhľady a doladí ich.
+"""Claude assistant: turns a text request into parameters, looks at previews and fine-tunes them.
 
-Beží cez oficiálne SDK `anthropic` (volanie Anthropic API stojí peniaze, kľúč zadáva používateľ).
-Kľúč sa číta zo súboru _nastavenia.json (zadaný v aplikácii) alebo z premennej prostredia
-ANTHROPIC_API_KEY; aplikácia ho nikdy nevypisuje ani neposiela späť do prehliadača.
+Runs through the official `anthropic` SDK (calls to the Anthropic API cost money; the user enters the
+key). The key is read from _settings.json (entered in the app) or from the ANTHROPIC_API_KEY
+environment variable; the app never prints it or sends it back to the browser.
 
-Asistent dostane nástroje: get_state, set_params, apply_preset, switch_module, render_preview,
-render_strip a queue_draft. Náhľady sú skutočné snímky z modulov v moduly/, takže
-model vidí, čo nastavil, a môže to opraviť. app.py používa: status(), set_settings(),
-test_key(), start_chat(), job(), cancel().
+The assistant gets these tools: get_state, set_params, apply_preset, switch_module, render_preview,
+render_strip and queue_draft. The previews are real frames from the modules in modules/, so the
+model sees what it set and can correct it. app.py uses: status(), set_settings(), test_key(),
+start_chat(), job(), cancel().
 """
 import base64
 import collections
@@ -29,10 +29,10 @@ if HERE not in sys.path:
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
-import jadro  # noqa: E402
+import core  # noqa: E402
 
 SDK_DIR = os.path.join(HERE, "_sdk")
-SETTINGS_FILE = os.path.join(HERE, "_nastavenia.json")
+SETTINGS_FILE = os.path.join(HERE, "_settings.json")
 
 PREVIEW_H = 540          # the frames the model sees: 960x540 (about 690 tokens each)
 TILE_H = 216             # contact sheet tiles, 384x216 at 16:9
@@ -47,11 +47,11 @@ KEEP_SESSIONS = 12
 
 # prices in USD per million tokens (Claude API docs, 2026-10); only for the estimate shown in the UI
 MODELS = [
-    {"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "note": "najlepší úsudok, 4 / 20 USD za mil. tokenov",
+    {"id": "claude-opus-5-5", "label": "Claude Opus 5.5", "note": "best judgement, 4 / 20 USD per million tokens",
      "in": 4.0, "out": 20.0, "cache_read": 0.20, "cache_write": 5.0},
-    {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "note": "rýchly, 2 / 10 USD za mil. tokenov",
+    {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5", "note": "fast, 2 / 10 USD per million tokens",
      "in": 2.0, "out": 10.0, "cache_read": 0.20, "cache_write": 2.5},
-    {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "note": "najlacnejší, 0,10 / 0,50 USD za mil. tokenov",
+    {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5", "note": "cheapest, 0.10 / 0.50 USD per million tokens",
      "in": 0.10, "out": 0.50, "cache_read": 0.01, "cache_write": 0.125},
 ]
 MODEL_BY_ID = {m["id"]: m for m in MODELS}
@@ -78,7 +78,7 @@ def sdk_hint():
 
 
 def load_sdk():
-    """The anthropic module, imported lazily: from site-packages or from aplikacia/_sdk."""
+    """The anthropic module, imported lazily: from site-packages or from _sdk/ next to the app."""
     if _SDK["tried"]:
         return _SDK["mod"]
     _SDK["tried"] = True
@@ -118,10 +118,10 @@ def api_key():
     """(key, source): the key typed into the app wins over the environment. Never shown anywhere."""
     k = str(_load_settings().get("api_key") or "").strip()
     if k:
-        return k, "súbor"
+        return k, "file"
     k = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if k:
-        return k, "prostredie"
+        return k, "environment"
     return None, None
 
 
@@ -156,15 +156,15 @@ def set_settings(body):
         k = str(body.get("key")).strip()
         if k:
             if len(k) < 20 or re.search(r"\s", k):
-                raise ValueError("To nevyzerá ako API kľúč (očakávam dlhý reťazec bez medzier, obvykle sk-ant-…).")
+                raise ValueError("That does not look like an API key (expected a long string without spaces, usually sk-ant-…).")
             d["api_key"] = k
     if body.get("model") is not None:
         if body["model"] not in MODEL_BY_ID:
-            raise ValueError("Neznámy model")
+            raise ValueError("Unknown model")
         d["model"] = body["model"]
     if body.get("effort") is not None:
         if body["effort"] not in EFFORTS:
-            raise ValueError("Neznáma úroveň úsilia")
+            raise ValueError("Unknown effort level")
         d["effort"] = body["effort"]
     _save_settings(d)
     return status()
@@ -174,10 +174,10 @@ def test_key():
     """A check without tokens: lists one model with the stored key (a network call, nothing is billed)."""
     sdk = load_sdk()
     if sdk is None:
-        raise ValueError("Knižnica anthropic nie je nainštalovaná. Príkaz: " + sdk_hint())
+        raise ValueError("The anthropic library is not installed. Command: " + sdk_hint())
     key, src = api_key()
     if not key:
-        raise ValueError("Nie je zadaný API kľúč.")
+        raise ValueError("No API key is set.")
     try:
         client = sdk.Anthropic(api_key=key, max_retries=1, timeout=30.0)
         page = client.models.list(limit=1)
@@ -197,24 +197,24 @@ def friendly(e):
     msg = getattr(e, "message", None) or str(e)
     code = getattr(e, "status_code", None)
     if name == "AuthenticationError":
-        return "API kľúč neplatí (401). Skontroluj ho v nastaveniach asistenta."
+        return "The API key is not valid (401). Check it in the assistant settings."
     if name == "PermissionDeniedError":
-        return "Kľúč nemá prístup k tomuto modelu (403)."
+        return "The key has no access to this model (403)."
     if name == "NotFoundError":
-        return f"Model alebo cesta neexistuje (404): {msg}"
+        return f"The model or path does not exist (404): {msg}"
     if name == "RateLimitError":
         ra = None
         try:
             ra = e.response.headers.get("retry-after")
         except Exception:
             pass
-        return "Limit požiadaviek Anthropic API (429), skús o chvíľu." + (f" Počkaj {ra} s." if ra else "")
+        return "Anthropic API rate limit (429), try again in a moment." + (f" Wait {ra} s." if ra else "")
     if name == "BadRequestError":
-        return f"Chybná požiadavka (400): {msg}"
+        return f"Bad request (400): {msg}"
     if name in ("APIConnectionError", "APITimeoutError"):
-        return "Nepodarilo sa spojiť s api.anthropic.com (sieť, firewall alebo výpadok)."
+        return "Could not connect to api.anthropic.com (network, firewall or an outage)."
     if name in SDK_ERROR_NAMES or code:
-        return f"Chyba API {code or ''}: {msg}".strip()
+        return f"API error {code or ''}: {msg}".strip()
     if isinstance(e, (RuntimeError, ValueError, KeyError)):
         return str(e)
     return f"{name}: {msg}"
@@ -271,17 +271,17 @@ def _module_block(i, M):
 
 
 def system_prompt(P, mods):
-    fonts = jadro.list_fonts()
+    fonts = core.list_fonts()
     sig = (tuple(f["file"] for f in fonts), P.slug, P.name, tuple(mods))
     if _SYS["sig"] == sig and _SYS["text"]:
         return _SYS["text"]
     font_lines = ", ".join(f"{f['file']} ({f['name']})" for f in fonts) or "(no fonts installed)"
     mod_lines = "\n".join(_module_block(i + 1, M) for i, M in enumerate(mods.values()))
     cats = "\n\n".join(f'Parameter catalogue, module "{M.MODULE_ID}":\n{_catalogue(M)}' for M in mods.values())
-    popis = (P.meta.get("popis") or "").strip()
-    text = f"""You are the built-in assistant of "{jadro.APP_NAME}" ({jadro.APP_TAGLINE}), a local desktop tool that renders short videos for bands: song titles, logo intros, moving album covers and more. Everything is drawn by the tool's own engines; you steer them through parameters and check the result with real preview frames.
+    desc = (P.meta.get("description") or "").strip()
+    text = f"""You are the built-in assistant of "{core.APP_NAME}" ({core.APP_TAGLINE}), a local desktop tool that renders short videos for bands: song titles, logo intros, moving album covers and more. Everything is drawn by the tool's own engines; you steer them through parameters and check the result with real preview frames.
 
-Current project: "{P.name}"{(" - " + popis) if popis else ""}.
+Current project: "{P.name}"{(" - " + desc) if desc else ""}.
 
 Modules available in this project:
 {mod_lines}
@@ -301,7 +301,7 @@ How to work:
 - When a request describes a song's mood, choose colours, light, particles, direction and timing to match it, and say in one sentence why.
 - If something cannot be done with these parameters, say so plainly instead of pretending.
 - queue_draft renders a quick small draft video of the current parameters; use it only when the request says drafts are allowed, and only once at the end.
-- Reply in the language of the request. Slovak requests get Slovak answers in the informal "ty" form. The final answer is short: what you changed in plain words (not only parameter keys), why, and at most one suggestion. Do not repeat the parameter dump.
+- Reply in the language of the request. Slovak requests get Slovak answers in the informal "ty" form. When the request's language is unclear, use the interface language from [state]. The final answer is short: what you changed in plain words (not only parameter keys), why, and at most one suggestion. Do not repeat the parameter dump.
 
 {cats}
 """
@@ -399,7 +399,7 @@ def apply_changes(M, params, changes):
                 except ValueError:
                     errors.append(f"{k}: expected a number, got {v!r}")
                     continue
-            c = jadro.coerce(spec, v)
+            c = core.coerce(spec, v)
             if abs(float(c) - float(v)) > 1e-9:
                 notes.append(f"{k}: {_num(float(v))} clamped to {_num(float(c))} (range {_num(spec['min'])}..{_num(spec['max'])})")
             applied[k] = c
@@ -421,7 +421,7 @@ def apply_changes(M, params, changes):
                 applied[k] = hit
         elif t == "font":
             if fonts is None:
-                fonts = jadro.list_fonts()
+                fonts = core.list_fonts()
             s = str(v).strip().lower()
             hit = next((f["file"] for f in fonts if s in (f["file"].lower(), f["name"].lower(),
                                                            os.path.splitext(f["file"])[0].lower())), None)
@@ -494,7 +494,7 @@ def jpeg_b64(frame, q=82, max_w=None):
         img = cv2.resize(img, (max_w, h), interpolation=cv2.INTER_AREA)
     ok, buf = cv2.imencode(".jpg", np.ascontiguousarray(img[..., ::-1]), [int(cv2.IMWRITE_JPEG_QUALITY), int(q)])
     if not ok:
-        raise RuntimeError("JPEG sa nepodaril")
+        raise RuntimeError("Could not encode the JPEG")
     return base64.b64encode(buf.tobytes()).decode("ascii")
 
 
@@ -532,7 +532,7 @@ class AppHost:
         return self._project(slug) if self._project else None
 
     def modules(self, P):
-        return self._mods(P) if self._mods else jadro.available_for(jadro.discover(), P)
+        return self._mods(P) if self._mods else core.available_for(core.discover(), P)
 
     def preview_size(self, M, params, h):
         return self._ps(M, params, h)
@@ -600,6 +600,7 @@ class ChatSession:
         self.start_params = {}
         self.allow_render = False
         self.prompt = ""
+        self.lang = "en"
         self.thread = None
         self._no_top_cache = False
 
@@ -631,7 +632,7 @@ class ChatSession:
                       + u["output"] * m["out"]) / 1e6, 4)
 
     # ---------- start ----------
-    def begin(self, P, mods, module, params, allow_render, prompt):
+    def begin(self, P, mods, module, params, allow_render, prompt, lang="en"):
         if self.P is not None and self.P.slug != P.slug:
             self.messages = []   # another band: the old conversation does not apply
         self.P = P
@@ -643,6 +644,7 @@ class ChatSession:
         self.start_params = dict(self.params)
         self.allow_render = bool(allow_render)
         self.prompt = prompt
+        self.lang = lang
         self.status = "running"
         self.error = None
         self.text = ""
@@ -679,7 +681,8 @@ class ChatSession:
                  f"[state] changed_from_defaults: {dumps(changed_from_defaults(M, p))}",
                  f"[state] timeline: total {round(tl['total'], 2)} s, phases "
                  + ", ".join(f"{ph['id']} {round(ph['t0'], 2)}-{round(ph['t1'], 2)} s" for ph in tl["phases"]),
-                 f"[state] drafts_allowed: {'yes' if self.allow_render else 'no'}"]
+                 f"[state] drafts_allowed: {'yes' if self.allow_render else 'no'}",
+                 f"[state] interface_language: {'Slovak' if self.lang == 'sk' else 'English'}"]
         if "title" in p:
             lines.insert(4, f"[state] title: {dumps(p['title'])}")
         return "\n".join(lines)
@@ -748,12 +751,12 @@ class ChatSession:
         try:
             sdk = load_sdk()
             if sdk is None:
-                raise RuntimeError("Knižnica anthropic nie je nainštalovaná. Príkaz: " + sdk_hint())
+                raise RuntimeError("The anthropic library is not installed. Command: " + sdk_hint())
             key, _src = api_key()
             if not key:
-                raise RuntimeError("Nie je zadaný API kľúč (nastavenia asistenta alebo premenná ANTHROPIC_API_KEY).")
+                raise RuntimeError("No API key is set (assistant settings or the ANTHROPIC_API_KEY variable).")
             if HOST is None:
-                raise RuntimeError("Asistent nemá pripojené náhľady (HOST).")
+                raise RuntimeError("The assistant has no previews attached (HOST).")
             client = sdk.Anthropic(api_key=key, max_retries=2, timeout=600.0)
             self._append_user_prompt()
             deadline = time.monotonic() + MAX_MINUTES * 60
@@ -761,10 +764,10 @@ class ChatSession:
             while True:
                 self._check_cancel()
                 if time.monotonic() > deadline:
-                    raise RuntimeError(f"Časový limit {MAX_MINUTES} min, asistent sa zastavil.")
+                    raise RuntimeError(f"Time limit of {MAX_MINUTES} min reached, the assistant stopped.")
                 if self.iterations >= MAX_ITER:
-                    self._step("info", f"Dosiahnutý limit {MAX_ITER} krokov, končím s tým, čo je nastavené.")
-                    self.text = self.text or "Dosiahol som limit krokov; parametre nechávam tak, ako sú teraz."
+                    self._step("info", f"Reached the limit of {MAX_ITER} steps, finishing with what is set.")
+                    self.text = self.text or "I reached the step limit; the parameters stay as they are now."
                     break
                 self.iterations += 1
                 try:
@@ -773,9 +776,9 @@ class ChatSession:
                 except ValueError as e:
                     # JSON of a tool input the SDK could not parse at all; the turn is re-issued (bounded)
                     json_retries += 1
-                    self._step("info", f"Model poslal nečitateľný vstup nástroja, skúšam znova ({json_retries}/2).")
+                    self._step("info", f"The model sent unreadable tool input, retrying ({json_retries}/2).")
                     if json_retries > 2:
-                        raise RuntimeError(f"Model opakovane poslal nečitateľný vstup nástroja: {e}")
+                        raise RuntimeError(f"The model kept sending unreadable tool input: {e}")
                     continue
                 self._account(getattr(response, "usage", None))
                 content = list(getattr(response, "content", []) or [])
@@ -790,14 +793,14 @@ class ChatSession:
                 if stop == "refusal":
                     sd = getattr(response, "stop_details", None)
                     why = " ".join(str(x) for x in (getattr(sd, "category", None), getattr(sd, "explanation", None)) if x)
-                    raise RuntimeError("Model požiadavku odmietol." + (f" ({why})" if why else ""))
+                    raise RuntimeError("The model declined the request." + (f" ({why})" if why else ""))
                 if stop == "pause_turn":
                     continue
                 if not tool_uses:
                     self.text = "\n\n".join(t for t in texts if t.strip())
                     break
                 if stop == "max_tokens":
-                    raise RuntimeError("Odpoveď modelu bola odseknutá uprostred volania nástroja (max_tokens).")
+                    raise RuntimeError("The model's answer was cut off in the middle of a tool call (max_tokens).")
                 results = []
                 for b in tool_uses:
                     self._check_cancel()
@@ -806,8 +809,8 @@ class ChatSession:
             self.status = "done"
         except Cancelled:
             self.status = "cancelled"
-            self.error = "Zrušené"
-            self._step("info", "Zrušené používateľom.")
+            self.error = "Cancelled"
+            self._step("info", "Cancelled by the user.")
         except Exception as e:
             # my own messages and API errors go to the log as one line; a traceback only for the unexpected
             if isinstance(e, (RuntimeError, ValueError)) or e.__class__.__name__ in SDK_ERROR_NAMES:
@@ -831,7 +834,7 @@ class ChatSession:
         tid = getattr(block, "id", "")
         bad = check_input(name, inp)
         if bad:
-            self._step("tool", name, args=dumps(inp)[:300], result=f"neplatný vstup: {bad}", error=True)
+            self._step("tool", name, args=dumps(inp)[:300], result=f"invalid input: {bad}", error=True)
             return {"type": "tool_result", "tool_use_id": tid, "is_error": True,
                     "content": dumps({"INVALID_JSON": bad, "input": dumps(inp)[:300]})}
         fn = getattr(self, "tool_" + name)
@@ -841,7 +844,7 @@ class ChatSession:
             raise
         except Exception as e:
             traceback.print_exc()
-            content, is_error, log, thumb = f"Nástroj zlyhal: {e.__class__.__name__}: {e}", True, None, None
+            content, is_error, log, thumb = f"The tool failed: {e.__class__.__name__}: {e}", True, None, None
         if isinstance(content, str):
             content = [{"type": "text", "text": content}]
         shown = log if log is not None else next((c["text"] for c in content if c.get("type") == "text"), "")
@@ -860,13 +863,13 @@ class ChatSession:
         out = {"module": M.MODULE_ID, "label": M.MODULE_LABEL, "params": p,
                "changed_from_defaults": changed_from_defaults(M, p), "timeline": M.timeline(p),
                "warnings": HOST.warnings(M, p, self.P)}
-        return dumps(out), False, f"{len(out['changed_from_defaults'])} zmien oproti predvoleným", None
+        return dumps(out), False, f"{len(out['changed_from_defaults'])} changed from the defaults", None
 
     def tool_set_params(self, inp):
         M = self._M()
         changes = inp.get("changes") or {}
         if not changes:
-            return dumps({"applied": {}, "errors": ["changes is empty"]}), True, "prázdne", None
+            return dumps({"applied": {}, "errors": ["changes is empty"]}), True, "empty", None
         applied, notes, errors = apply_changes(M, self.params, changes)
         if applied:
             self.params = M.merge({**self.params, **applied})
@@ -878,7 +881,7 @@ class ChatSession:
                "warnings": HOST.warnings(M, p, self.P)}
         log = ", ".join(f"{k}={_num(v) if isinstance(v, float) else v}" for k, v in applied.items())
         if errors:
-            log += (" | " if log else "") + "chyby: " + "; ".join(errors)
+            log += (" | " if log else "") + "errors: " + "; ".join(errors)
         return dumps(out), bool(errors) and not applied, log, None
 
     def tool_apply_preset(self, inp):
@@ -921,7 +924,7 @@ class ChatSession:
         M = self._M()
         over = self._budget()
         if over:
-            return over, True, "vyčerpaný limit obrázkov", None
+            return over, True, "image budget used up", None
         p = M.merge(self.params)
         tl = M.timeline(p)
         fps = int(p["fps"])
@@ -946,7 +949,7 @@ class ChatSession:
         M = self._M()
         over = self._budget()
         if over:
-            return over, True, "vyčerpaný limit obrázkov", None
+            return over, True, "image budget used up", None
         n = int(min(max(int(inp.get("n", 8)), 4), 12))
         p = M.merge(self.params)
         tl = M.timeline(p)
@@ -970,17 +973,17 @@ class ChatSession:
                 "warnings": HOST.warnings(M, p, self.P)}
         content = [{"type": "text", "text": dumps(meta)},
                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": jpeg_b64(sheet, 80)}}]
-        return content, False, f"{n} políčok cez {total:.1f} s", jpeg_b64(sheet, 70, max_w=480)
+        return content, False, f"{n} tiles over {total:.1f} s", jpeg_b64(sheet, 70, max_w=480)
 
     def tool_queue_draft(self, inp):
         if not self.allow_render:
             return ("Drafts are not allowed in this request. Tell the user the parameters are set and that the "
-                    "Náhľad button renders a draft."), True, "náhľad nie je povolený", None
+                    "Quick preview button renders a draft."), True, "drafts not allowed", None
         M = self._M()
         p = M.merge(self.params)
         job = HOST.queue_draft(M, p, "AI: " + M.default_name(p), P=self.P)
         return dumps({"queued": True, "job": job.get("id"), "name": job.get("name"), "res": job.get("res"),
-                      "frames": job.get("total")}), False, f"náhľad vo fronte (úloha {job.get('id')})", None
+                      "frames": job.get("total")}), False, f"preview queued (job {job.get('id')})", None
 
 
 # ----------------------------------------------------------------------------------------------
@@ -991,33 +994,33 @@ def start_chat(body, P=None):
     global RUNNING
     prompt = str(body.get("prompt") or "").strip()
     if not prompt:
-        raise ValueError("Napíš, čo má asistent urobiť.")
+        raise ValueError("Write what the assistant should do.")
     if len(prompt) > 8000:
-        raise ValueError("Požiadavka je pridlhá (max 8000 znakov).")
+        raise ValueError("The request is too long (max 8000 characters).")
     if load_sdk() is None:
-        raise ValueError("Knižnica anthropic nie je nainštalovaná. Príkaz: " + sdk_hint())
+        raise ValueError("The anthropic library is not installed. Command: " + sdk_hint())
     if not api_key()[0]:
-        raise ValueError("Nie je zadaný API kľúč. Zadaj ho v nastaveniach asistenta.")
+        raise ValueError("No API key is set. Enter it in the assistant settings.")
     if HOST is None:
-        raise ValueError("Asistent nemá pripojené náhľady (HOST).")
+        raise ValueError("The assistant has no previews attached (HOST).")
     if P is None:
         P = HOST.project(body.get("project") or None)
     mods = HOST.modules(P)
     if not mods:
-        raise ValueError("V tomto projekte nie je žiadny modul.")
-    module = str(body.get("module") or next(iter(mods)))
+        raise ValueError("This project has no module.")
+    module = core.module_id(body.get("module") or next(iter(mods)))
     if module not in mods:
-        raise ValueError(f"Modul {module} v projekte {P.name} nie je.")
+        raise ValueError(f"The module {module} is not in the project {P.name}.")
     params = body.get("params")
     params = {} if params is None else params
     if not isinstance(params, dict):
-        raise ValueError("params musí byť objekt")
+        raise ValueError("params must be an object")
     model, effort = prefs()
     model = body.get("model") if body.get("model") in MODEL_BY_ID else model
     effort = body.get("effort") if body.get("effort") in EFFORTS else effort
     with LOCK:
         if RUNNING is not None and RUNNING.status in ("queued", "running"):
-            raise ValueError("Asistent ešte pracuje. Počkaj, kým skončí, alebo ho zruš.")
+            raise ValueError("The assistant is still working. Wait until it finishes or cancel it.")
         sid = str(body.get("session") or "")
         sess = SESSIONS.get(sid)
         if sess is not None and (sess.model != model or len(sess.messages) >= MAX_MESSAGES):
@@ -1029,21 +1032,22 @@ def start_chat(body, P=None):
                 SESSIONS.popitem(last=False)
         sess.effort = effort
         RUNNING = sess
-        sess.begin(P, mods, module, params, body.get("allow_render"), prompt)
+        lang = "sk" if str(body.get("lang") or "").lower() == "sk" else "en"
+        sess.begin(P, mods, module, params, body.get("allow_render"), prompt, lang)
     return sess.view(0)
 
 
 def job(sid, since=0):
     sess = SESSIONS.get(str(sid or ""))
     if sess is None:
-        raise KeyError("Konverzácia neexistuje")
+        raise KeyError("The conversation does not exist")
     return sess.view(since)
 
 
 def cancel(sid):
     sess = SESSIONS.get(str(sid or ""))
     if sess is None:
-        raise KeyError("Konverzácia neexistuje")
+        raise KeyError("The conversation does not exist")
     sess.cancel = True
     return sess.view(0)
 

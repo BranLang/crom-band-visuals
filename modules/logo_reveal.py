@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""Odhalenie loga: univerzalny modul aplikacie CROM pre lubovolne logo (PNG s priehladnostou).
+"""Logo reveal: a general CROM module for any logo (a PNG with transparency).
 
-Logo sa objavi (prelinanie, stieranie, zaostrenie alebo vyjazd zdola), pritom sa jemne priblizi
-z vacsej mierky, okolo neho zasvieti ziara, cez neho prejde pas lesku a z okrajov vyletia iskry.
-Ked efekty dobehnu, logo stoji v pokoji a je pixel po pixeli povodny obrazok (ziadne prekreslenie,
-ziadne prevzorkovanie), takze tvar ani farby loga sa neposkodia.
+The logo appears (fade, wipe, focus or rise from below) while it gently settles from a larger
+scale; a glow lights up around it, a shine sweeps across it and sparks fly off its edges.
+When the effects are over the logo holds still and is the original image pixel for pixel (no
+redrawing, no resampling), so the logo's shape and colours are never damaged.
 
-  python moduly/logo_reveal.py stills recept.json priecinok [--times 0,1.5,4]
-  python moduly/logo_reveal.py render recept.json priecinok [--res 1920x1080] [--draft] [--project projekty/demo]
+  python modules/logo_reveal.py stills recipe.json folder [--times 0,1.5,4]
+  python modules/logo_reveal.py render recipe.json folder [--res 1920x1080] [--draft] [--project projects/demo]
 """
 import math
 import os
@@ -24,21 +24,21 @@ if APP not in sys.path:
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
-import jadro as E  # noqa: E402
+import core as E  # noqa: E402
 
 MODULE_ID = "logo_reveal"
-MODULE_LABEL = "Odhalenie loga"
+MODULE_LABEL = "Logo reveal"
 ENGINE_VERSION = 1
 MODULE_ORDER = 25
-MODULE_DESC = "Ľubovoľné logo sa objaví so žiarou, leskom a iskrami. V pokoji je logo presne pôvodný obrázok."
+MODULE_DESC = "Any logo appears with a glow, a shine and sparks. At rest the logo is exactly the original image."
 AI_DESC = ("Universal logo reveal for any band logo (PNG with transparency). The logo appears with one of the "
            "reveal styles (fade, wipe, blur, rise) while slowly pushing in from a larger scale, with an optional "
            "glow behind it, a light sweep across it and sparks flying off its edges. After the effects the logo "
            "holds still and is pixel-identical to the source file. Times are in seconds.")
-RENDER_MSG = "Pripravujem logo"
+RENDER_MSG = "Preparing the logo"
 
-STYLES = [["fade", "Prelínanie"], ["wipe", "Stieranie zľava"], ["wipe_c", "Stieranie zo stredu"],
-          ["blur", "Zaostrenie z rozmazania"], ["rise", "Výjazd zdola"]]
+STYLES = [["fade", "Fade"], ["wipe", "Wipe from the left"], ["wipe_c", "Wipe from the centre"],
+          ["blur", "Focus from a blur"], ["rise", "Rise from below"]]
 
 
 # ----------------------------------------------------------------------------------------------
@@ -47,63 +47,63 @@ STYLES = [["fade", "Prelínanie"], ["wipe", "Stieranie zľava"], ["wipe_c", "Sti
 
 SCHEMA = [
     {"id": "logo", "label": "Logo", "params": [
-        E._p("logo", "Obrázok loga", "asset", "logo.png", "geo", kind="logo",
-             hint="PNG s priehľadnosťou z priečinka logo v projekte. Nové pridáš tlačidlom Logá."),
-        E.F("width", "Max. šírka", 60.0, 5, 100, 1, "% záberu", "geo"),
-        E.F("height", "Max. výška", 45.0, 5, 100, 1, "% záberu", "geo",
-            hint="Logo sa zmestí do oboch rozmerov, pomer strán ostane."),
-        E.F("pos_y", "Výška umiestnenia", 0.0, -40, 40, 0.5, "% záberu", "geo",
-            hint="0 = v strede, záporné číslo posunie logo hore."),
-        E._p("bg_color", "Farba pozadia", "color", "#050507"),
-        E.F("vignette", "Stmavenie okrajov", 0.35, 0, 1, 0.01),
+        E._p("logo", "Logo image", "asset", "logo.png", "geo", kind="logo",
+             hint="A PNG with transparency from the project's logos folder. Add new ones with the upload button."),
+        E.F("width", "Max. width", 60.0, 5, 100, 1, "% of frame", "geo"),
+        E.F("height", "Max. height", 45.0, 5, 100, 1, "% of frame", "geo",
+            hint="The logo fits inside both limits and keeps its aspect ratio."),
+        E.F("pos_y", "Vertical position", 0.0, -40, 40, 0.5, "% of frame", "geo",
+            hint="0 = centred, a negative number moves the logo up."),
+        E._p("bg_color", "Background colour", "color", "#050507"),
+        E.F("vignette", "Darker edges", 0.35, 0, 1, 0.01),
     ]},
-    {"id": "reveal", "label": "Odhalenie", "params": [
-        E._p("style", "Spôsob", "select", "fade", options=STYLES),
-        E.F("t_in", "Začiatok", 0.4, 0, 10, 0.05, "s"),
-        E.F("dur", "Dĺžka odhalenia", 1.8, 0.1, 10, 0.05, "s"),
-        E.F("soft", "Mäkkosť hrany", 0.18, 0.01, 1, 0.01, "", hint="Pri stieraní: šírka prechodu."),
-        E.F("push", "Priblíženie", 6.0, 0, 30, 0.5, "%",
-            hint="O koľko je logo na začiatku väčšie. Dobehne s koncom odhalenia."),
-        E.F("push_extra", "Dobeh priblíženia", 1.2, 0, 10, 0.1, "s", hint="Koľko po odhalení sa ešte približuje."),
+    {"id": "reveal", "label": "Reveal", "params": [
+        E._p("style", "Style", "select", "fade", options=STYLES),
+        E.F("t_in", "Start", 0.4, 0, 10, 0.05, "s"),
+        E.F("dur", "Reveal length", 1.8, 0.1, 10, 0.05, "s"),
+        E.F("soft", "Edge softness", 0.18, 0.01, 1, 0.01, "", hint="For wipes: the width of the transition."),
+        E.F("push", "Push-in", 6.0, 0, 30, 0.5, "%",
+            hint="How much larger the logo is at the start. It settles as the reveal ends."),
+        E.F("push_extra", "Push-in run-out", 1.2, 0, 10, 0.1, "s", hint="How long it keeps settling after the reveal."),
     ]},
-    {"id": "glow", "label": "Žiara", "params": [
-        E._p("glow_color", "Farba žiary", "color", "#ffc46b"),
-        E.F("glow", "Sila pri odhalení", 0.9, 0, 3, 0.05),
-        E.F("glow_rest", "Sila v pokoji", 0.0, 0, 2, 0.05, hint="0 = v pokoji iba čisté logo."),
-        E.F("glow_size", "Veľkosť žiary", 3.0, 0.2, 15, 0.1, "% záberu", "geo"),
+    {"id": "glow", "label": "Glow", "params": [
+        E._p("glow_color", "Glow colour", "color", "#ffc46b"),
+        E.F("glow", "Strength during reveal", 0.9, 0, 3, 0.05),
+        E.F("glow_rest", "Strength at rest", 0.0, 0, 2, 0.05, hint="0 = only the clean logo at rest."),
+        E.F("glow_size", "Glow size", 3.0, 0.2, 15, 0.1, "% of frame", "geo"),
     ]},
-    {"id": "shine", "label": "Lesk", "params": [
-        E._p("shine_on", "Pás lesku cez logo", "bool", True),
-        E.F("shine_t", "Začiatok lesku", 2.4, 0, 20, 0.05, "s"),
-        E.F("shine_dur", "Dĺžka prechodu", 0.9, 0.1, 5, 0.05, "s"),
-        E.F("shine_width", "Šírka pásu", 0.12, 0.02, 0.6, 0.01),
-        E.F("shine_gain", "Jas lesku", 0.8, 0, 3, 0.05),
-        E._p("shine_color", "Farba lesku", "color", "#fff4e0"),
+    {"id": "shine", "label": "Shine", "params": [
+        E._p("shine_on", "Shine sweep across the logo", "bool", True),
+        E.F("shine_t", "Shine start", 2.4, 0, 20, 0.05, "s"),
+        E.F("shine_dur", "Sweep length", 0.9, 0.1, 5, 0.05, "s"),
+        E.F("shine_width", "Band width", 0.12, 0.02, 0.6, 0.01),
+        E.F("shine_gain", "Shine brightness", 0.8, 0, 3, 0.05),
+        E._p("shine_color", "Shine colour", "color", "#fff4e0"),
     ]},
-    {"id": "sparks", "label": "Iskry", "params": [
-        E._p("sparks", "Počet iskier", "int", 160, "geo", min=0, max=1500, step=10),
-        E._p("spark_color", "Farba iskier", "color", "#ffb04a"),
-        E.F("spark_speed", "Rýchlosť", 1.0, 0.1, 4, 0.05),
-        E.F("spark_life", "Život iskry", 1.4, 0.2, 5, 0.05, "s"),
-        E.F("spark_gain", "Jas", 1.0, 0, 4, 0.05),
+    {"id": "sparks", "label": "Sparks", "params": [
+        E._p("sparks", "Number of sparks", "int", 160, "geo", min=0, max=1500, step=10),
+        E._p("spark_color", "Spark colour", "color", "#ffb04a"),
+        E.F("spark_speed", "Speed", 1.0, 0.1, 4, 0.05),
+        E.F("spark_life", "Spark life", 1.4, 0.2, 5, 0.05, "s"),
+        E.F("spark_gain", "Brightness", 1.0, 0, 4, 0.05),
     ]},
-    {"id": "timing", "label": "Dĺžka", "params": [
-        E.F("total", "Celková dĺžka", 6.0, 1, 60, 0.5, "s"),
-        E.F("out", "Zmiznutie na konci", 0.0, 0, 5, 0.05, "s", hint="0 = video skončí so stojacim logom."),
+    {"id": "timing", "label": "Length", "params": [
+        E.F("total", "Total length", 6.0, 1, 60, 0.5, "s"),
+        E.F("out", "Fade out at the end", 0.0, 0, 5, 0.05, "s", hint="0 = the video ends on the still logo."),
     ]},
-    {"id": "output", "label": "Výstup", "params": E.output_params(
-        seed=7, seed_rebuild="geo", seed_hint="Iné rozmiestnenie iskier.",
-        bg_hint="Priehľadné pozadie: ostane logo so žiarou a iskrami, dá sa položiť na hocijaké video.")},
+    {"id": "output", "label": "Output", "params": E.output_params(
+        seed=7, seed_rebuild="geo", seed_hint="A different layout of the sparks.",
+        bg_hint="Transparent background: the logo with its glow and sparks remains, ready to lay over any video.")},
 ]
 
 PRESETS = [
-    {"id": "klasik", "label": "Klasické (prelínanie, žiara, lesk)", "params": {}},
-    {"id": "cisto", "label": "Čisto (iba prelínanie)", "params": {
+    {"id": "classic", "label": "Classic (fade, glow, shine)", "params": {}},
+    {"id": "clean", "label": "Clean (fade only)", "params": {
         "push": 3.0, "glow": 0.0, "shine_on": False, "sparks": 0, "vignette": 0.2}},
-    {"id": "ohen", "label": "Oheň (stieranie a veľa iskier)", "params": {
+    {"id": "fire", "label": "Fire (wipe and lots of sparks)", "params": {
         "style": "wipe", "dur": 2.2, "glow": 1.4, "glow_color": "#ff7a2a", "sparks": 700, "spark_speed": 1.4,
         "spark_color": "#ff8a2a", "shine_color": "#ffd9a0"}},
-    {"id": "chlad", "label": "Chlad (zaostrenie, modrá žiara)", "params": {
+    {"id": "cold", "label": "Cold (focus, blue glow)", "params": {
         "style": "blur", "dur": 2.4, "glow_color": "#7fb8ff", "spark_color": "#a8d4ff", "sparks": 120,
         "shine_color": "#e8f4ff", "bg_color": "#03060c"}},
 ]
@@ -153,28 +153,28 @@ def timeline(p):
     t_in, t_rev, t_push, t_shine, t_spark, t_out, total = _times(p)
     ph = []
     if t_in > 0:
-        ph.append({"id": "pred", "label": "Tma", "t0": 0.0, "t1": min(t_in, total), "video": 1})
-    ph.append({"id": "odhalenie", "label": "Odhalenie", "t0": min(t_in, total), "t1": min(t_rev, total), "video": 1})
+        ph.append({"id": "before", "label": "Dark", "t0": 0.0, "t1": min(t_in, total), "video": 1})
+    ph.append({"id": "reveal", "label": "Reveal", "t0": min(t_in, total), "t1": min(t_rev, total), "video": 1})
     rest0 = min(max(t_rev, t_push, t_shine, t_spark), t_out)
     if rest0 > t_rev:
-        ph.append({"id": "efekty", "label": "Lesk a iskry", "t0": min(t_rev, total), "t1": rest0, "video": 1})
+        ph.append({"id": "effects", "label": "Shine and sparks", "t0": min(t_rev, total), "t1": rest0, "video": 1})
     if t_out > rest0:
-        ph.append({"id": "pokoj", "label": "Pokoj", "t0": rest0, "t1": t_out, "video": 1})
+        ph.append({"id": "rest", "label": "Rest", "t0": rest0, "t1": t_out, "video": 1})
     if total > t_out:
-        ph.append({"id": "odchod", "label": "Zmiznutie", "t0": t_out, "t1": total, "video": 1})
+        ph.append({"id": "exit", "label": "Fade out", "t0": t_out, "t1": total, "video": 1})
     mk = []
     if p["shine_on"]:
-        mk.append({"t": round(float(p["shine_t"]), 3), "label": "lesk"})
-    mk.append({"t": round(still_time(p), 3), "label": "logo v pokoji"})
+        mk.append({"t": round(float(p["shine_t"]), 3), "label": "shine"})
+    mk.append({"t": round(still_time(p), 3), "label": "logo at rest"})
     return {"total": total, "t1": total, "fps": fps, "phases": ph, "markers": mk}
 
 
 def default_name(p):
-    return f"Odhalenie {os.path.splitext(str(p.get('logo') or ''))[0] or 'loga'}"
+    return f"Reveal {os.path.splitext(str(p.get('logo') or ''))[0] or 'logo'}"
 
 
 def file_slug(p):
-    return E._ascii_slug(os.path.splitext(str(p.get("logo") or "logo"))[0], "logo") + "_odhalenie"
+    return E._ascii_slug(os.path.splitext(str(p.get("logo") or "logo"))[0], "logo") + "_reveal"
 
 
 def load_recipe(path):
@@ -268,9 +268,9 @@ class Renderer:
         lst = self.ctx.assets("logo") if self.ctx is not None and hasattr(self.ctx, "assets") else []
         if lst:
             self.logo_name = lst[0]
-            self.warn.append(f"Logo {p['logo']} v projekte nie je, použijem {lst[0]}.")
+            self.warn.append(f"The logo {p['logo']} is not in the project, using {lst[0]}.")
             return self.ctx.asset_path("logo", lst[0])
-        self.warn.append("V projekte nie je žiadne logo. Pridaj PNG tlačidlom Logá.")
+        self.warn.append("The project has no logo yet. Add a PNG with the upload button.")
         return None
 
     def _build(self, p):
@@ -279,18 +279,18 @@ class Renderer:
         self.rgb = None
         if lg is None:
             if fp:
-                self.warn.append("Logo sa nepodarilo načítať.")
+                self.warn.append("The logo could not be read.")
             return
         rgb8, a8 = lg
         if a8.min() == 255:
-            self.warn.append("Logo nemá priehľadné pozadie, bude to obdĺžnik. Použi PNG s priehľadnosťou.")
+            self.warn.append("The logo has no transparent background, it will show as a rectangle. Use a PNG with transparency.")
         h0, w0 = a8.shape
         W, H = self.W, self.H
         s = min(W * float(p["width"]) / 100.0 / w0, H * float(p["height"]) / 100.0 / h0)
         lw, lh = max(1, int(round(w0 * s))), max(1, int(round(h0 * s)))
         if s > 1.0:
-            self.warn.append(f"Logo má iba {w0}×{h0} px, pri tejto veľkosti sa zväčšuje {s:.1f}×. "
-                             "Na ostrý výsledok nahraj väčšie PNG.")
+            self.warn.append(f"The logo is only {w0}×{h0} px, at this size it is enlarged {s:.1f}×. "
+                             "Upload a larger PNG for a sharp result.")
         if (lw, lh) == (w0, h0):
             rgb, a = rgb8.astype(np.float32) / 255.0, a8.astype(np.float32) / 255.0
         else:
@@ -313,7 +313,7 @@ class Renderer:
         self.y0 = int(round(cy - lh / 2.0))
         self.cx, self.cy = self.x0 + lw / 2.0, self.y0 + lh / 2.0
         if self.x0 < 0 or self.y0 < 0 or self.x0 + lw > W or self.y0 + lh > H:
-            self.warn.append("Logo presahuje okraj záberu, zmenši ho alebo posuň.")
+            self.warn.append("The logo goes past the edge of the frame, make it smaller or move it.")
         # Glow source: the logo alpha on the full canvas, blurred once.
         self.glow_sig = max(float(p["glow_size"]) / 100.0 * min(W, H), 0.5)
         self.glow_map = self._glow_from(self._place(self.a))

@@ -1,11 +1,11 @@
 @echo off
-rem CROM - pripojenie k Claude (MCP server). Volitelne, az po instaluj.bat.
+rem CROM - connect to Claude (MCP server). Optional, only after install.bat.
 setlocal
-title CROM - pripojenie ku Claude
+title CROM - connect to Claude
 cd /d "%~dp0"
 set "PY=%~dp0.venv\Scripts\python.exe"
 if not exist "%PY%" (
-  echo Najprv spusti instaluj.bat.
+  echo Run install.bat first.
   pause
   exit /b 1
 )

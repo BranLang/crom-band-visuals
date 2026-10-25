@@ -1,14 +1,20 @@
 .venv/
 __pycache__/
 *.pyc
-_nastavenia.json
+_settings.json
 _mcp_app.log
 *.log
-vystupy/
-_nahlady/
-_kos/
+outputs/
+_previews/
+_trash/
 _sdk/
-_stare/
+_old/
 edge_prof/
 .DS_Store
 Thumbs.db
+# names used by older (Slovak) versions; kept so a not yet migrated copy never commits a key or renders
+_nastavenia.json
+vystupy/
+_nahlady/
+_kos/
+_stare/

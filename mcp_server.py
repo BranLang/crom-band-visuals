@@ -59,7 +59,7 @@ def _http(method, path, body=None, project=None, timeout=120, raw=False):
             msg = json.loads(msg).get("error") or msg
         except ValueError:
             pass
-        raise AppError(f"CROM odpovedal {e.code}: {msg}")
+        raise AppError(f"CROM answered {e.code}: {msg}")
 
 
 def _alive():
@@ -75,7 +75,7 @@ def ensure_app():
     if _alive():
         return
     if os.environ.get("CROM_NO_AUTOSTART") == "1":
-        raise AppError(f"CROM nebeží na {BASE}. Spusti spusti.bat.")
+        raise AppError(f"CROM is not running on {BASE}. Start it with start.bat or start.sh.")
     py = sys.executable
     venv = (os.path.join(HERE, ".venv", "Scripts", "python.exe") if os.name == "nt"
             else os.path.join(HERE, ".venv", "bin", "python"))
@@ -95,7 +95,7 @@ def ensure_app():
             return
         if _started_proc.poll() is not None:
             break
-    raise AppError("CROM sa nepodarilo spustiť, pozri _mcp_app.log v priečinku aplikácie.")
+    raise AppError("CROM could not be started, see _mcp_app.log in the app folder.")
 
 
 def api(method, path, body=None, project=None, **kw):
@@ -116,7 +116,7 @@ def _params(module, params, preset, project):
         d = _schema(module, project)
         pr = next((p for p in d.get("presets") or [] if p["id"] == preset), None)
         if pr is None:
-            raise AppError(f"Predvoľba {preset!r} neexistuje. Dostupné: {', '.join(p['id'] for p in d['presets'])}")
+            raise AppError(f"The preset {preset!r} does not exist. Available: {', '.join(p['id'] for p in d['presets'])}")
         params = dict(pr.get("params") or {}, **params)
     return params
 
@@ -140,7 +140,7 @@ def text(obj):
 # ------------------------------------------------------------------ tools
 
 P_PROJECT = {"type": "string", "description": "Project slug (one band or client). Omit for the default project."}
-P_MODULE = {"type": "string", "description": "Module id, e.g. titulky, logo, logo_reveal, obal. See crom_status."}
+P_MODULE = {"type": "string", "description": "Module id, e.g. titles, logo_reveal, waving_cover. See crom_status."}
 P_PARAMS = {"type": "object", "description": "Parameter overrides by key (see crom_schema). Missing keys keep defaults."}
 P_PRESET = {"type": "string", "description": "Optional preset id applied under params."}
 
@@ -160,7 +160,7 @@ def t_projects(a):
 
 
 def t_create_project(a):
-    return text(api("POST", "/api/project", {"name": a["name"], "popis": a.get("description") or ""}))
+    return text(api("POST", "/api/project", {"name": a["name"], "description": a.get("description") or ""}))
 
 
 def t_schema(a):
@@ -281,7 +281,7 @@ def t_save_recipe(a):
 def t_add_asset(a):
     fp = a["path"]
     if not os.path.isfile(fp):
-        raise AppError(f"Súbor neexistuje: {fp}")
+        raise AppError(f"The file does not exist: {fp}")
     ensure_app()
     with open(fp, "rb") as f:
         data = f.read()
@@ -294,7 +294,7 @@ def t_add_asset(a):
         with urllib.request.urlopen(req, timeout=60) as r:
             return text(json.loads(r.read().decode("utf-8")))
     except urllib.error.HTTPError as e:
-        raise AppError(f"CROM odpovedal {e.code}: {e.read().decode('utf-8', 'replace')}")
+        raise AppError(f"CROM answered {e.code}: {e.read().decode('utf-8', 'replace')}")
 
 
 def t_reload(a):
@@ -338,10 +338,10 @@ TOOLS = [
     ("crom_save_recipe", "Save params as a named recipe so the look can be reused later.",
      {"name": {"type": "string"}, "module": P_MODULE, "params": P_PARAMS, "preset": P_PRESET, "project": P_PROJECT},
      ["name", "module"], t_save_recipe, False),
-    ("crom_add_asset", "Copy a local file into the project (kind logo = PNG logo, obal = album cover).",
+    ("crom_add_asset", "Copy a local file into the project (kind logo = PNG logo, cover = album cover).",
      {"path": {"type": "string", "description": "Absolute path of the file."},
-      "kind": {"type": "string", "enum": ["logo", "obal"]}, "project": P_PROJECT}, ["path", "kind"], t_add_asset, False),
-    ("crom_reload_modules", "Reload effect modules after a module file in moduly/ was added or changed.",
+      "kind": {"type": "string", "enum": ["logo", "cover"]}, "project": P_PROJECT}, ["path", "kind"], t_add_asset, False),
+    ("crom_reload_modules", "Reload effect modules after a module file in modules/ was added or changed.",
      {"project": P_PROJECT}, [], t_reload, False),
 ]
 BY_NAME = {t[0]: t for t in TOOLS}
@@ -380,7 +380,7 @@ def handle(msg):
         try:
             return t[4](p.get("arguments") or {})
         except (AppError, KeyError, ValueError, OSError) as e:
-            return {"content": [{"type": "text", "text": f"Chyba: {e}"}], "isError": True}
+            return {"content": [{"type": "text", "text": f"Error: {e}"}], "isError": True}
     if method in ("resources/list",):
         return {"resources": []}
     if method in ("prompts/list",):
@@ -413,7 +413,7 @@ def main():
 
 
 def setup():
-    """Interactive helper (pripoj_claude.bat): registers this server in Claude Code and Claude Desktop."""
+    """Interactive helper (connect_claude.bat): registers this server in Claude Code and Claude Desktop."""
     import shutil
     for st in (sys.stdout, sys.stderr):
         try:
@@ -423,44 +423,44 @@ def setup():
     py = sys.executable
     me = os.path.abspath(__file__)
     entry = {"command": py, "args": [me]}
-    print("CROM: pripojenie ku Claude")
+    print("CROM: connect to Claude")
     print()
     claude = shutil.which("claude")
     if claude:
-        ans = input("Nasiel som Claude Code. Pridat CROM do Claude Code? [A/n] ").strip().lower()
-        if ans in ("", "a", "ano", "y", "yes"):
+        ans = input("Found Claude Code. Add CROM to Claude Code? [Y/n] ").strip().lower()
+        if ans in ("", "y", "yes", "a", "ano"):
             subprocess.call([claude, "mcp", "remove", "--scope", "user", "crom"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             rc = subprocess.call([claude, "mcp", "add", "--scope", "user", "crom", "--", py, me])
-            print("Claude Code: hotovo." if rc == 0 else "Claude Code: nepodarilo sa, pozri hlasku vyssie.")
+            print("Claude Code: done." if rc == 0 else "Claude Code: that did not work, see the message above.")
     else:
-        print("Claude Code som nenasiel (to je v poriadku, ak pouzivas len Claude Desktop).")
+        print("Claude Code was not found (that is fine if you only use Claude Desktop).")
     cfg_dir = (os.path.expanduser("~/Library/Application Support/Claude") if sys.platform == "darwin"
                else os.path.join(os.environ.get("APPDATA", ""), "Claude"))
     cfg = os.path.join(cfg_dir, "claude_desktop_config.json")
     print()
     if os.path.isdir(cfg_dir):
-        ans = input("Nasiel som Claude Desktop. Pridat CROM do jeho nastaveni? [A/n] ").strip().lower()
-        if ans in ("", "a", "ano", "y", "yes"):
+        ans = input("Found Claude Desktop. Add CROM to its settings? [Y/n] ").strip().lower()
+        if ans in ("", "y", "yes", "a", "ano"):
             data = {}
             if os.path.isfile(cfg):
                 try:
                     with open(cfg, "r", encoding="utf-8") as f:
                         data = json.load(f)
                 except ValueError:
-                    print(f"Subor {cfg} nie je platny JSON, nemenim ho. Pridaj CROM rucne podla navodu.")
+                    print(f"The file {cfg} is not valid JSON, leaving it alone. Add CROM by hand as shown below.")
                     data = None
                 if data is not None:
-                    shutil.copy2(cfg, cfg + ".zaloha")
+                    shutil.copy2(cfg, cfg + ".backup")
             if data is not None:
                 data.setdefault("mcpServers", {})["crom"] = entry
                 with open(cfg, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
-                print("Claude Desktop: hotovo. Claude Desktop uplne zavri (aj z listy pri hodinach) a otvor znova.")
+                print("Claude Desktop: done. Quit Claude Desktop completely (also from the tray or menu bar) and open it again.")
     else:
-        print("Claude Desktop som nenasiel.")
+        print("Claude Desktop was not found.")
     print()
-    print('Ak to chces nastavit rucne, toto patri do claude_desktop_config.json pod "mcpServers":')
+    print('To set it up by hand, this goes into claude_desktop_config.json under "mcpServers":')
     print()
     print(json.dumps({"crom": entry}, indent=2))
 
