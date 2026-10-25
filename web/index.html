@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="sk">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>CROM</title>
@@ -43,27 +43,32 @@
 </svg>
 
 <header class="top">
-  <div class="brand" title="CROM · vizuály pre kapely">
+  <div class="brand" title="CROM · visuals for bands">
     <span class="brand-mark" id="brand-mark">C</span>
-    <span class="brand-text"><b id="brand-name">CROM</b><small id="brand-sub">vizuály pre kapely</small></span>
+    <span class="brand-text"><b id="brand-name">CROM</b><small id="brand-sub">visuals for bands</small></span>
   </div>
   <div class="project-box">
-    <select id="project" title="Projekt (kapela)"></select>
-    <button class="ib" id="project-assets" title="Logo a obaly projektu"><svg><use href="#i-upload"/></svg></button>
-    <button class="ib" id="project-new" title="Nový projekt (kapela)"><svg><use href="#i-plus"/></svg></button>
+    <select id="project" title="Project (band)"></select>
+    <button class="ib" id="project-assets" title="Project logos and covers"><svg><use href="#i-upload"/></svg></button>
+    <button class="ib" id="project-new" title="New project (band)"><svg><use href="#i-plus"/></svg></button>
   </div>
-  <nav class="modules" id="modules" aria-label="Moduly"></nav>
+  <nav class="modules" id="modules" aria-label="Modules"></nav>
   <div class="top-mid">
-    <input id="name" class="name" type="text" placeholder="Názov úlohy" spellcheck="false" autocomplete="off">
-    <span id="recipe-badge" class="badge hidden" title="Načítaný recept"></span>
+    <input id="name" class="name" type="text" placeholder="Job name" spellcheck="false" autocomplete="off">
+    <span id="recipe-badge" class="badge hidden" title="Loaded recipe"></span>
   </div>
   <div class="top-actions">
-    <button class="ib" id="undo" title="Späť (Ctrl+Z)" disabled><svg><use href="#i-undo"/></svg></button>
-    <button class="ib" id="redo" title="Znova (Ctrl+Y)" disabled><svg><use href="#i-redo"/></svg></button>
+    <div class="lang" id="lang" role="group" aria-label="Language">
+      <button type="button" data-lang="en" title="English">EN</button>
+      <button type="button" data-lang="sk" title="Slovenčina">SK</button>
+    </div>
     <span class="sep"></span>
-    <button class="btn" id="save-recipe" title="Uložiť recept (Ctrl+S)"><svg><use href="#i-save"/></svg>Uložiť recept</button>
-    <button class="btn" id="btn-draft" title="Rýchly náhľad videa v 960×540"><svg><use href="#i-film"/></svg>Rýchly náhľad</button>
-    <button class="btn primary" id="btn-final" title="Finálny render v plnom rozlíšení"><svg><use href="#i-play"/></svg>Render</button>
+    <button class="ib" id="undo" title="Undo (Ctrl+Z)" disabled><svg><use href="#i-undo"/></svg></button>
+    <button class="ib" id="redo" title="Redo (Ctrl+Y)" disabled><svg><use href="#i-redo"/></svg></button>
+    <span class="sep"></span>
+    <button class="btn" id="save-recipe" title="Save recipe (Ctrl+S)"><svg><use href="#i-save"/></svg>Save recipe</button>
+    <button class="btn" id="btn-draft" title="Quick video preview at 960×540"><svg><use href="#i-film"/></svg>Quick preview</button>
+    <button class="btn primary" id="btn-final" title="Final render at full resolution"><svg><use href="#i-play"/></svg>Render</button>
   </div>
 </header>
 
@@ -71,8 +76,8 @@
 
   <aside class="inspector" id="inspector">
     <div class="insp-head">
-      <input id="filter" type="search" placeholder="Hľadať parameter…" spellcheck="false" autocomplete="off">
-      <button class="ib" id="reset-all" title="Všetky parametre na predvolené hodnoty"><svg><use href="#i-reset"/></svg></button>
+      <input id="filter" type="search" placeholder="Search parameters…" spellcheck="false" autocomplete="off">
+      <button class="ib" id="reset-all" title="Reset every parameter to its default"><svg><use href="#i-reset"/></svg></button>
     </div>
     <div class="presets" id="presets"></div>
     <div class="groups" id="groups"></div>
@@ -82,38 +87,38 @@
     <div class="viewer" id="viewer">
       <div class="frame-box" id="frame-box">
         <img id="frame" alt="" draggable="false">
-        <div class="frame-empty" id="frame-empty">Načítavam náhľad…</div>
+        <div class="frame-empty" id="frame-empty">Loading the preview…</div>
       </div>
       <div class="hud">
         <span class="hud-time" id="hud-time">0.00 s</span>
         <span id="hud-phase"></span>
         <span id="hud-size"></span>
         <span id="hud-ms"></span>
-        <span class="pill warn hidden" id="hud-approx" title="Simulácia ohňa ešte beží, snímka je z najbližšieho hotového stavu">približne</span>
+        <span class="pill warn hidden" id="hud-approx" title="The fire simulation is still running, the frame comes from the nearest finished state">approximate</span>
       </div>
-      <div class="sim hidden" id="sim" title="Simulácia ohňa sa počíta na pozadí">
-        <span id="sim-text">Simulácia ohňa</span>
+      <div class="sim hidden" id="sim" title="The fire simulation is computed in the background">
+        <span id="sim-text">Fire simulation</span>
         <div class="sim-bar"><i id="sim-fill"></i></div>
       </div>
       <div class="warnings hidden" id="warnings"></div>
     </div>
 
     <div class="transport">
-      <button class="ib" id="to-start" title="Na začiatok (Home)"><svg><use href="#i-start"/></svg></button>
-      <button class="ib" id="prev-marker" title="Predchádzajúca značka (,)"><svg><use href="#i-prev"/></svg></button>
-      <button class="ib big" id="play" title="Prehrať / zastaviť (medzerník)"><svg><use href="#i-play"/></svg></button>
-      <button class="ib" id="next-marker" title="Ďalšia značka (.)"><svg><use href="#i-next"/></svg></button>
-      <button class="ib" id="to-end" title="Na koniec (End)"><svg><use href="#i-end"/></svg></button>
-      <span class="tc" id="tc" title="Čas / celková dĺžka">00:00.00 <small>/ 00:00.00</small></span>
-      <input type="range" id="scrub" min="0" max="25" step="0.01" value="0" aria-label="Čas">
-      <label class="sel-wrap" title="Kvalita živého náhľadu">
+      <button class="ib" id="to-start" title="To the start (Home)"><svg><use href="#i-start"/></svg></button>
+      <button class="ib" id="prev-marker" title="Previous marker (,)"><svg><use href="#i-prev"/></svg></button>
+      <button class="ib big" id="play" title="Play / stop (Space)"><svg><use href="#i-play"/></svg></button>
+      <button class="ib" id="next-marker" title="Next marker (.)"><svg><use href="#i-next"/></svg></button>
+      <button class="ib" id="to-end" title="To the end (End)"><svg><use href="#i-end"/></svg></button>
+      <span class="tc" id="tc" title="Time / total length">00:00.00 <small>/ 00:00.00</small></span>
+      <input type="range" id="scrub" min="0" max="25" step="0.01" value="0" aria-label="Time">
+      <label class="sel-wrap" title="Live preview quality">
         <select id="quality">
-          <option value="auto">náhľad: auto</option>
-          <option value="fast">náhľad: rýchly</option>
-          <option value="fine">náhľad: presný</option>
+          <option value="auto">preview: auto</option>
+          <option value="fast">preview: fast</option>
+          <option value="fine">preview: exact</option>
         </select>
       </label>
-      <button class="ib" id="still" title="Uložiť túto snímku ako PNG v plnom rozlíšení"><svg><use href="#i-camera"/></svg></button>
+      <button class="ib" id="still" title="Save this frame as a full-resolution PNG"><svg><use href="#i-camera"/></svg></button>
     </div>
 
     <div class="timeline" id="timeline">
@@ -121,145 +126,145 @@
         <div class="tl-ruler" id="tl-ruler"></div>
       </div>
       <div class="tl-row tl-phases-row">
-        <div class="tl-label">Fázy</div>
+        <div class="tl-label">Phases</div>
         <div class="tl-track" id="tl-phases"></div>
       </div>
       <div class="tl-row tl-markers-row">
-        <div class="tl-label">Značky</div>
+        <div class="tl-label">Markers</div>
         <div class="tl-track" id="tl-markers"></div>
       </div>
       <div class="tl-lanes" id="tl-lanes"></div>
       <div class="tl-playhead" id="tl-playhead"><i></i></div>
     </div>
 
-    <div class="strip" id="strip" title="Náhľadový pás celej animácie; kliknutím skočíš na daný čas">
+    <div class="strip" id="strip" title="Preview strip of the whole animation; click to jump to that time">
       <img id="strip-img" alt="" draggable="false">
       <div class="strip-head" id="strip-head"></div>
-      <div class="strip-note hidden" id="strip-note">približne, simulácia beží…</div>
+      <div class="strip-note hidden" id="strip-note">approximate, the simulation is running…</div>
     </div>
   </section>
 
   <aside class="panel">
     <nav class="tabs" id="tabs">
       <button data-tab="render" class="on">Render</button>
-      <button data-tab="outputs">Výstupy</button>
-      <button data-tab="recipes">Recepty</button>
-      <button data-tab="ai"><svg><use href="#i-spark"/></svg>Asistent</button>
+      <button data-tab="outputs">Outputs</button>
+      <button data-tab="recipes">Recipes</button>
+      <button data-tab="ai"><svg><use href="#i-spark"/></svg>Assistant</button>
     </nav>
 
     <section class="tab" id="tab-render">
       <div class="card">
-        <div class="card-title">Výstup</div>
+        <div class="card-title">Output</div>
         <div class="kv" id="render-summary"></div>
         <div class="btn-row">
-          <button class="btn" id="btn-draft2"><svg><use href="#i-film"/></svg>Rýchly náhľad 960×540</button>
-          <button class="btn primary" id="btn-final2"><svg><use href="#i-play"/></svg>Finálny render</button>
+          <button class="btn" id="btn-draft2"><svg><use href="#i-film"/></svg>Quick preview 960×540</button>
+          <button class="btn primary" id="btn-final2"><svg><use href="#i-play"/></svg>Final render</button>
         </div>
         <details class="sub" id="batch-box">
-          <summary id="batch-label">Dávka</summary>
+          <summary id="batch-label">Batch</summary>
           <p class="hint" id="batch-help"></p>
           <textarea id="batch" rows="4" placeholder="Song One&#10;Song Two / Part II&#10;…" spellcheck="false"></textarea>
           <div class="btn-row">
-            <button class="btn" id="btn-batch"><svg><use href="#i-play"/></svg>Renderovať dávku</button>
+            <button class="btn" id="btn-batch"><svg><use href="#i-play"/></svg>Render the batch</button>
           </div>
         </details>
       </div>
       <div class="card grow">
-        <div class="card-title">Úlohy <span class="count" id="jobs-count"></span>
-          <button class="ib right" id="jobs-clear" title="Odstrániť hotové úlohy zo zoznamu"><svg><use href="#i-trash"/></svg></button>
+        <div class="card-title">Jobs <span class="count" id="jobs-count"></span>
+          <button class="ib right" id="jobs-clear" title="Remove finished jobs from the list"><svg><use href="#i-trash"/></svg></button>
         </div>
         <ul class="list" id="jobs"></ul>
-        <div class="empty" id="jobs-empty">Zatiaľ žiadne úlohy. Rýchly náhľad vyrenderuje celé video v 960×540, finálny render v nastavenom rozlíšení.</div>
+        <div class="empty" id="jobs-empty">No jobs yet. A quick preview renders the whole video at 960×540, a final render at the chosen resolution.</div>
       </div>
     </section>
 
     <section class="tab hidden" id="tab-outputs">
       <div class="card grow">
-        <div class="card-title">Hotové výstupy
-          <button class="ib right" id="outputs-open" title="Otvoriť priečinok výstupov"><svg><use href="#i-folder"/></svg></button>
-          <button class="ib right" id="outputs-refresh" title="Obnoviť"><svg><use href="#i-refresh"/></svg></button>
+        <div class="card-title">Finished outputs
+          <button class="ib right" id="outputs-open" title="Open the outputs folder"><svg><use href="#i-folder"/></svg></button>
+          <button class="ib right" id="outputs-refresh" title="Refresh"><svg><use href="#i-refresh"/></svg></button>
         </div>
         <div class="path" id="outputs-path"></div>
         <ul class="list" id="outputs"></ul>
-        <div class="empty" id="outputs-empty">Zatiaľ nič. Finálne rendery sa ukladajú do priečinka podľa názvu titulku, každý render ako nová verzia (v01, v02…).</div>
+        <div class="empty" id="outputs-empty">Nothing yet. Final renders go into a folder named after the title, every render as a new version (v01, v02…).</div>
       </div>
     </section>
 
     <section class="tab hidden" id="tab-recipes">
       <div class="card">
-        <div class="card-title">Uložiť aktuálne nastavenie</div>
+        <div class="card-title">Save the current settings</div>
         <div class="field-row">
-          <input id="recipe-name" type="text" placeholder="Názov receptu" spellcheck="false">
-          <button class="btn" id="recipe-save"><svg><use href="#i-save"/></svg>Uložiť</button>
+          <input id="recipe-name" type="text" placeholder="Recipe name" spellcheck="false">
+          <button class="btn" id="recipe-save"><svg><use href="#i-save"/></svg>Save</button>
         </div>
         <div class="btn-row">
-          <button class="btn sm" id="recipe-overwrite" disabled title="Prepísať načítaný recept"><svg><use href="#i-check"/></svg>Prepísať načítaný</button>
-          <button class="btn sm" id="recipe-export" title="Stiahnuť recept ako JSON"><svg><use href="#i-download"/></svg>Export</button>
-          <button class="btn sm" id="recipe-import" title="Načítať recept zo súboru JSON"><svg><use href="#i-upload"/></svg>Import</button>
+          <button class="btn sm" id="recipe-overwrite" disabled title="Overwrite the loaded recipe"><svg><use href="#i-check"/></svg>Overwrite loaded</button>
+          <button class="btn sm" id="recipe-export" title="Download the recipe as JSON"><svg><use href="#i-download"/></svg>Export</button>
+          <button class="btn sm" id="recipe-import" title="Load a recipe from a JSON file"><svg><use href="#i-upload"/></svg>Import</button>
           <input type="file" id="recipe-file" accept=".json,application/json" hidden>
         </div>
       </div>
       <div class="card grow">
-        <div class="card-title">Recepty
-          <button class="ib right" id="recipes-open" title="Otvoriť priečinok receptov"><svg><use href="#i-folder"/></svg></button>
-          <button class="ib right" id="recipes-refresh" title="Obnoviť"><svg><use href="#i-refresh"/></svg></button>
+        <div class="card-title">Recipes
+          <button class="ib right" id="recipes-open" title="Open the recipes folder"><svg><use href="#i-folder"/></svg></button>
+          <button class="ib right" id="recipes-refresh" title="Refresh"><svg><use href="#i-refresh"/></svg></button>
         </div>
         <ul class="list" id="recipes"></ul>
-        <div class="empty" id="recipes-empty">Zatiaľ žiadne recepty. Recept je kompletné nastavenie (text, písmo, materiál, svetlo, časovanie), ku ktorému sa dá kedykoľvek vrátiť.</div>
+        <div class="empty" id="recipes-empty">No recipes yet. A recipe is a complete setup (text, font, material, light, timing) you can come back to at any time.</div>
       </div>
     </section>
 
     <section class="tab hidden" id="tab-ai">
       <div class="card" id="ai-setup">
-        <div class="card-title">Asistent Claude
-          <button class="ib right" id="ai-settings-toggle" title="Nastavenia (kľúč, model)"><svg><use href="#i-key"/></svg></button>
+        <div class="card-title">Claude assistant
+          <button class="ib right" id="ai-settings-toggle" title="Settings (key, model)"><svg><use href="#i-key"/></svg></button>
         </div>
-        <div class="ai-status" id="ai-status">Zisťujem stav…</div>
+        <div class="ai-status" id="ai-status">Checking the status…</div>
         <div class="ai-settings hidden" id="ai-settings">
-          <p class="hint">Kľúč sa ukladá iba lokálne do súboru <code>_nastavenia.json</code> vedľa aplikácie a nikdy sa nezobrazuje. Získaš ho na console.anthropic.com. Používanie asistenta je platené podľa cenníka Anthropic; odhad ceny sa zobrazuje pri každej požiadavke.</p>
+          <p class="hint">The key is stored only locally, in the file <code>_settings.json</code> next to the app, and is never shown. Get one at console.anthropic.com. Using the assistant is billed by Anthropic's price list; a cost estimate is shown with every request.</p>
           <div class="field-row">
             <input id="ai-key" type="password" placeholder="sk-ant-…" autocomplete="off" spellcheck="false">
-            <button class="btn" id="ai-key-save">Uložiť kľúč</button>
+            <button class="btn" id="ai-key-save">Save key</button>
           </div>
           <div class="btn-row">
-            <button class="btn sm" id="ai-key-test" title="Overí kľúč jedným dopytom na zoznam modelov; nestojí nič">Overiť kľúč</button>
-            <button class="btn sm" id="ai-key-clear">Vymazať kľúč</button>
+            <button class="btn sm" id="ai-key-test" title="Checks the key with one request for the model list; it costs nothing">Check key</button>
+            <button class="btn sm" id="ai-key-clear">Delete key</button>
           </div>
           <div class="field-row two">
             <label>Model <select id="ai-model"></select></label>
-            <label>Úsilie <select id="ai-effort"></select></label>
+            <label>Effort <select id="ai-effort"></select></label>
           </div>
           <div class="hint" id="ai-model-note"></div>
           <div class="hint" id="ai-sdk-hint"></div>
         </div>
       </div>
       <div class="card">
-        <div class="card-title">Požiadavka</div>
-        <textarea id="ai-prompt" rows="4" placeholder="Napr.: Urob z toho starý bronz, nástup pomalší o dve sekundy a rozpad nech ide od stredu. Skontroluj náhľad v polovici nástupu." spellcheck="true"></textarea>
+        <div class="card-title">Request</div>
+        <textarea id="ai-prompt" rows="4" placeholder="E.g.: Make it old bronze, the entry two seconds slower, and let the dissolve start from the centre. Check the preview halfway through the entry." spellcheck="true"></textarea>
         <div class="ai-opts">
-          <label class="chk" title="Asistent smie spustiť rýchly náhľad videa (960×540), aby videl pohyb"><input type="checkbox" id="ai-allow-render"> môže spúšťať rýchle náhľady</label>
-          <label class="chk" title="Výsledok sa hneď použije v editore (Ctrl+Z ho vráti)"><input type="checkbox" id="ai-auto-apply" checked> použiť výsledok hneď</label>
-          <label class="chk" title="Ďalšia požiadavka nadviaže na túto konverzáciu"><input type="checkbox" id="ai-continue" checked> nadviazať na konverzáciu</label>
+          <label class="chk" title="The assistant may start a quick video preview (960×540) to see the motion"><input type="checkbox" id="ai-allow-render"> may start quick previews</label>
+          <label class="chk" title="The result is used in the editor right away (Ctrl+Z undoes it)"><input type="checkbox" id="ai-auto-apply" checked> apply the result right away</label>
+          <label class="chk" title="The next request continues this conversation"><input type="checkbox" id="ai-continue" checked> continue the conversation</label>
         </div>
         <div class="btn-row">
-          <button class="btn primary" id="ai-send"><svg><use href="#i-send"/></svg>Poslať</button>
-          <button class="btn danger hidden" id="ai-cancel"><svg><use href="#i-stop"/></svg>Zrušiť</button>
-          <button class="btn sm" id="ai-new" title="Začať novú konverzáciu">Nová konverzácia</button>
+          <button class="btn primary" id="ai-send"><svg><use href="#i-send"/></svg>Send</button>
+          <button class="btn danger hidden" id="ai-cancel"><svg><use href="#i-stop"/></svg>Cancel</button>
+          <button class="btn sm" id="ai-new" title="Start a new conversation">New conversation</button>
           <span class="ai-meta" id="ai-meta"></span>
         </div>
       </div>
       <div class="card grow">
-        <div class="card-title">Priebeh</div>
+        <div class="card-title">Progress</div>
         <div class="ai-log" id="ai-log"></div>
         <div class="ai-result hidden" id="ai-result">
           <div class="ai-text" id="ai-text"></div>
           <div class="ai-changes" id="ai-changes"></div>
           <div class="btn-row">
-            <button class="btn primary sm" id="ai-apply"><svg><use href="#i-check"/></svg>Použiť zmeny</button>
-            <button class="btn sm" id="ai-discard">Zahodiť</button>
+            <button class="btn primary sm" id="ai-apply"><svg><use href="#i-check"/></svg>Apply changes</button>
+            <button class="btn sm" id="ai-discard">Discard</button>
           </div>
         </div>
-        <div class="empty" id="ai-empty">Asistent vidí parametre oboch modulov, vie ich nastavovať, vyrenderovať si náhľadové snímky a pás celej animácie, pozrieť sa na ne a doladiť výsledok. Napíš, čo chceš dosiahnuť.</div>
+        <div class="empty" id="ai-empty">The assistant sees the parameters of every module, can set them, render preview frames and a strip of the whole animation, look at them and fine-tune the result. Write what you want to achieve.</div>
       </div>
     </section>
   </aside>
@@ -275,7 +280,7 @@
 
 <div class="modal hidden" id="modal">
   <div class="modal-box" role="dialog" aria-modal="true">
-    <div class="modal-head"><span id="modal-title"></span><button class="ib" id="modal-close" title="Zavrieť (Esc)"><svg><use href="#i-x"/></svg></button></div>
+    <div class="modal-head"><span id="modal-title"></span><button class="ib" id="modal-close" title="Close (Esc)"><svg><use href="#i-x"/></svg></button></div>
     <div class="modal-body" id="modal-body"></div>
     <div class="modal-foot" id="modal-foot"></div>
   </div>
@@ -283,6 +288,7 @@
 
 <div class="popover hidden" id="popover"></div>
 
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 <script src="ai.js"></script>
 </body>

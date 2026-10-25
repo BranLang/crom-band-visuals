@@ -1,10 +1,14 @@
 /* CROM — editor logic. Vanilla JS, talks to app.py on the same origin.
    Everything the inspector and the timeline show comes from /api/schema (SCHEMA, PRESETS, LANES),
-   so a new parameter or lane in engine.py / logo_engine.py appears here without touching this file. */
+   so a new parameter or lane in a module appears here without touching this file.
+   Every visible string goes through t() (i18n.js): English is the source, Slovak a translation. */
 (function () {
 'use strict';
 
 // ------------------------------------------------------------------ helpers
+const I18N = window.I18N;
+const t = I18N.t;
+const tp = I18N.plural;
 const $ = (sel, root) => (root || document).querySelector(sel);
 const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 function el(tag, attrs, ...kids) {
@@ -54,10 +58,9 @@ function fmtDate(v) {
   if (!v) return '';
   const d = typeof v === 'number' ? new Date(v * 1000) : new Date(String(v).replace(' ', 'T'));
   if (isNaN(d)) return String(v);
-  return d.toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString(I18N.locale(), { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 function fmtEta(sec) { if (sec == null) return ''; sec = Math.max(0, Math.round(sec)); return sec >= 60 ? `${Math.floor(sec / 60)}:${pad2(sec % 60)}` : `${sec} s`; }
-const plural = (n, a, b, c) => n === 1 ? a : (n >= 2 && n <= 4 ? b : c);
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 const normRel = (r) => String(r || '').replace(/\\/g, '/');
 const encodeRel = (r) => normRel(r).split('/').map(encodeURIComponent).join('/');
@@ -73,7 +76,7 @@ async function parse(r) {
   const data = ct.includes('application/json') ? await r.json().catch(() => ({})) : await r.text().catch(() => '');
   if (!r.ok) {
     const msg = (data && data.error) || (typeof data === 'string' && data.slice(0, 200)) || ('HTTP ' + r.status);
-    throw new Error(msg);
+    throw new Error(t(msg));
   }
   return data;
 }
@@ -92,15 +95,18 @@ const api = {
 
 // ------------------------------------------------------------------ state
 const LS_KEY = 'crom.ui.v1';
-const PHASE_KEYS = { titulky: { in: 't_in', hold: 't_hold', out: 't_out' }, logo: { all: 'dur' } };
-const PHASE_META = { titulky: [['in', 'Nástup', 1], ['hold', 'Ustálený', 1], ['out', 'Rozpad', 2]], logo: [['all', 'Intro', 1]] };
+// recipes and saved UI state of older versions use the Slovak module ids
+const MODULE_ALIASES = { titulky: 'titles', obal: 'waving_cover' };
+const modId = (id) => MODULE_ALIASES[id] || id;
+const PHASE_KEYS = { titles: { in: 't_in', hold: 't_hold', out: 't_out' } };
+const PHASE_META = { titles: [['in', 'Entry', 1], ['hold', 'Hold', 1], ['out', 'Dissolve', 2]] };
 const REBUILD_NOTE = {
-  layout: 'prepočíta rozloženie textu', shade: 'prepočíta tieňovanie', order: 'prepočíta poradie rozpadu',
-  sim: 'spustí novú simuláciu ohňa (asi 50 s, náhľad je dovtedy približný)', grade: 'prepočíta farebnú úpravu loga', canvas: 'prepočíta plátno',
+  layout: 'recomputes the text layout', shade: 'recomputes the shading', order: 'recomputes the dissolve order',
+  sim: 'starts a new fire simulation (about 50 s, the preview is approximate until then)', grade: 'recomputes the logo grading', canvas: 'recomputes the canvas',
 };
 const S = {
   project: '', projects: [], projectInfo: null, batch: {},
-  module: 'titulky', modules: [], mod: {},
+  module: 'titles', modules: [], mod: {},
   params: {}, undo: {}, redo: {}, recipe: {}, names: {}, tPer: {},
   t: 0, playing: false, play0: 0, tl: null, tlName: '', tlSlug: '',
   quality: 'auto', tab: 'render', openGroups: {}, openOut: null,
@@ -114,7 +120,7 @@ let readyResolve; const ready = new Promise((r) => { readyResolve = r; });
 const P = () => S.params[S.module];
 const M = () => S.mod[S.module];
 const specOf = (key) => (M() && M().specs[key]) || null;
-const moduleLabel = (id) => { const m = S.modules.find((x) => x.id === id); return m ? m.label : (id || ''); };
+const moduleLabel = (id) => { const m = S.modules.find((x) => x.id === modId(id)); return m ? t(m.label) : (id || ''); };
 function resOf(p) { const m = /^(\d+)x(\d+)$/.exec(String((p || P() || {}).res || '')); return m ? [+m[1], +m[2]] : [1920, 1080]; }
 const currentName = () => (S.names[S.module] || '').trim() || S.tlName || '';
 function currentHash() { const p = P(); const keys = Object.keys(p).sort(); return djb2(S.module + '|' + JSON.stringify(keys.map((k) => [k, p[k]]))); }
@@ -197,8 +203,8 @@ function redo() {
 function updateUndoButtons() {
   const u = (S.undo[S.module] || []).length, r = (S.redo[S.module] || []).length;
   $('#undo').disabled = !u; $('#redo').disabled = !r;
-  $('#undo').title = u ? `Späť (Ctrl+Z) · ${u}` : 'Späť (Ctrl+Z)';
-  $('#redo').title = r ? `Znova (Ctrl+Y) · ${r}` : 'Znova (Ctrl+Y)';
+  $('#undo').title = t('Undo (Ctrl+Z)') + (u ? ` · ${u}` : '');
+  $('#redo').title = t('Redo (Ctrl+Y)') + (r ? ` · ${r}` : '');
 }
 
 // ------------------------------------------------------------------ module loading
@@ -247,16 +253,16 @@ async function switchModule(id, first) {
 }
 function renderModuleTabs() {
   const nav = $('#modules'); nav.innerHTML = '';
-  for (const m of S.modules) nav.append(el('button', { class: m.id === S.module ? 'on' : '', title: m.desc || m.label, onclick: () => switchModule(m.id).catch((e) => toast(e.message, 'err')) }, m.label));
+  for (const m of S.modules) nav.append(el('button', { class: m.id === S.module ? 'on' : '', title: t(m.desc || m.label), onclick: () => switchModule(m.id).catch((e) => toast(e.message, 'err')) }, t(m.label)));
   const errs = Object.entries(S.moduleErrors || {});
-  if (errs.length) nav.append(el('button', { class: 'mod-err', type: 'button', title: 'Niektoré moduly sa nenačítali, klikni pre detail', onclick: showModuleErrors }, icon('alert'), String(errs.length)));
-  nav.append(el('button', { class: 'mod-reload', type: 'button', title: 'Znovu načítať moduly z priečinka moduly (nový efekt sa objaví bez reštartu)', onclick: reloadModules }, icon('refresh')));
+  if (errs.length) nav.append(el('button', { class: 'mod-err', type: 'button', title: t('Some modules did not load, click for details'), onclick: showModuleErrors }, icon('alert'), String(errs.length)));
+  nav.append(el('button', { class: 'mod-reload', type: 'button', title: t('Reload the modules from the modules folder (a new effect appears without a restart)'), onclick: reloadModules }, icon('refresh')));
 }
 function showModuleErrors() {
   const errs = Object.entries(S.moduleErrors || {});
-  if (!errs.length) { toast('Všetky moduly sa načítali.', 'ok'); return; }
+  if (!errs.length) { toast(t('Every module loaded.'), 'ok'); return; }
   const body = el('div', { class: 'mod-errors' }, ...errs.map(([f, e]) => el('div', {}, el('b', {}, f), el('pre', {}, String(e)))));
-  openModal({ title: 'Moduly, ktoré sa nenačítali', body, foot: [el('button', { class: 'btn', type: 'button', onclick: closeModal }, 'Zavrieť')] });
+  openModal({ title: t('Modules that did not load'), body, foot: [el('button', { class: 'btn', type: 'button', onclick: closeModal }, t('Close'))] });
 }
 async function reloadModules() {
   try {
@@ -266,15 +272,15 @@ async function reloadModules() {
     S.mod = {};
     await switchModule(keep, true);
     const ne = Object.keys(S.moduleErrors).length;
-    toast(`Načítané moduly: ${S.modules.length}` + (ne ? ` · ${ne} s chybou` : ''), ne ? 'warn' : 'ok');
-  } catch (e) { toast('Moduly sa nepodarilo načítať: ' + e.message, 'err'); }
+    toast(t('Modules loaded: {n}', { n: S.modules.length }) + (ne ? ' · ' + t('{n} with errors', { n: ne }) : ''), ne ? 'warn' : 'ok');
+  } catch (e) { toast(t('Could not load the modules: ') + e.message, 'err'); }
 }
 function updateBatchBox() {
   const b = S.batch[S.module]; const box = $('#batch-box');
   box.classList.toggle('hidden', !b);
   if (!b) return;
-  $('#batch-label').textContent = b.label || 'Dávka';
-  $('#batch-help').textContent = b.help || 'Každý riadok je jedna úloha s aktuálnymi parametrami.';
+  $('#batch-label').textContent = t(b.label || 'Batch');
+  $('#batch-help').textContent = t(b.help || 'Each line is one job with the current parameters.');
 }
 
 // ------------------------------------------------------------------ projects (one per band)
@@ -285,7 +291,7 @@ function renderProjects() {
   const info = S.projectInfo || {};
   const app = S.info.app_name || 'CROM';
   $('#brand-name').textContent = app.toUpperCase();
-  $('#brand-sub').textContent = info.name || 'vizuály pre kapely';
+  $('#brand-sub').textContent = info.name || t('visuals for bands');
   document.title = (info.name ? info.name + ' · ' : '') + app;
 }
 async function switchProject(slug) {
@@ -300,20 +306,20 @@ async function switchProject(slug) {
   save();
 }
 async function newProjectFlow() {
-  const r = await askText({ title: 'Nový projekt', label: 'Projekt je jedna kapela alebo klient: vlastné logo, obaly, recepty a výstupy. Názov kapely:', value: '', buttons: [{ label: 'Vytvoriť', action: 'ok', primary: true }] });
+  const r = await askText({ title: t('New project'), label: t('A project is one band or client, with its own logos, covers, recipes and outputs. Band name:'), value: '', buttons: [{ label: t('Create'), action: 'ok', primary: true }] });
   const name = r && r.text; if (!name) return;
   try {
     const d = await api.post('/api/project', { name });
     S.projects = d.projects || S.projects;
     await switchProject(d.project.slug);
-    toast(`Projekt „${d.project.name}“ je pripravený. Logo a obaly pridáš tlačidlom so šípkou hore.`, 'ok', { ms: 8000 });
-  } catch (e) { toast('Projekt sa nepodarilo vytvoriť: ' + e.message, 'err'); }
+    toast(t('The project “{name}” is ready. Add logos and covers with the upload button (arrow up).', { name: d.project.name }), 'ok', { ms: 8000 });
+  } catch (e) { toast(t('Could not create the project: ') + e.message, 'err'); }
 }
 function assetFlow() {
   const info = S.projectInfo || { assets: {} };
   const body = el('div', { class: 'assets' });
-  const kinds = [['logo', 'Logo kapely', 'PNG s priehľadným pozadím. Efekty ho nikdy neprekresľujú.', '.png'],
-                 ['obal', 'Obal albumu', 'JPG alebo PNG obalu, pre modul Obal (rozpohybovaný obal).', '.jpg,.jpeg,.png']];
+  const kinds = [['logo', 'Band logo', 'A PNG with a transparent background. The effects never redraw it.', '.png'],
+                 ['cover', 'Album cover', 'A JPG or PNG of the cover, for the Waving cover module.', '.jpg,.jpeg,.png']];
   for (const [kind, label, help, accept] of kinds) {
     const have = (info.assets && info.assets[kind]) || [];
     const input = el('input', { type: 'file', accept, class: 'hidden' });
@@ -323,15 +329,15 @@ function assetFlow() {
         const d = await api.upload('/api/asset?kind=' + kind, f, { 'X-Kind': kind, 'X-Filename': asciiName(f.name) });
         S.projectInfo = d.project; S.mod = {}; closeModal();
         await switchModule(S.module, true);
-        toast(`Nahraté: ${d.file || f.name}` + ((d.warnings || []).length ? ' · ' + d.warnings.join(' ') : ''), (d.warnings || []).length ? 'warn' : 'ok', { ms: 8000 });
-      } catch (e) { toast('Nahrávanie zlyhalo: ' + e.message, 'err'); }
+        toast(t('Uploaded: {file}', { file: d.file || f.name }) + ((d.warnings || []).length ? ' · ' + d.warnings.map((w) => t(w)).join(' ') : ''), (d.warnings || []).length ? 'warn' : 'ok', { ms: 8000 });
+      } catch (e) { toast(t('The upload failed: ') + e.message, 'err'); }
     });
     body.append(el('div', { class: 'asset-row' },
-      el('div', {}, el('b', {}, label), el('div', { class: 'hint' }, help),
-        el('div', { class: 'hint' }, have.length ? 'V projekte: ' + have.join(', ') : 'Zatiaľ nič.')),
-      input, el('button', { class: 'btn', onclick: () => input.click() }, 'Nahrať…')));
+      el('div', {}, el('b', {}, t(label)), el('div', { class: 'hint' }, t(help)),
+        el('div', { class: 'hint' }, have.length ? t('In the project: ') + have.join(', ') : t('Nothing yet.'))),
+      input, el('button', { class: 'btn', onclick: () => input.click() }, t('Upload…'))));
   }
-  openModal({ title: 'Súbory projektu „' + (info.name || '') + '“', body, foot: [el('button', { class: 'btn', type: 'button', onclick: closeModal }, 'Zavrieť')] });
+  openModal({ title: t('Project files “{name}”', { name: info.name || '' }), body, foot: [el('button', { class: 'btn', type: 'button', onclick: closeModal }, t('Close'))] });
 }
 
 // ------------------------------------------------------------------ timeline data
@@ -374,23 +380,23 @@ function laneValueText(lane, p, sp) {
   return `${f(lane.from)}–${f(lane.to)} %`;
 }
 function laneTitle(lane) {
-  const L = (k) => k ? ((specOf(k) || {}).label || k) : null;
+  const L = (k) => k ? t((specOf(k) || {}).label || k) : null;
   const parts = [];
-  if (lane.phase === 'end') parts.push(`${L(lane.len)} (sekundy pred koncom)`);
+  if (lane.phase === 'end') parts.push(t('{what} (seconds before the end)', { what: L(lane.len) }));
   else {
-    if (lane.from) parts.push('začiatok: ' + L(lane.from));
-    if (lane.to) parts.push('koniec: ' + L(lane.to));
-    if (lane.len) parts.push('dĺžka: ' + L(lane.len));
-    parts.push(lane.unit === 's' ? 'v sekundách od začiatku' : `v % fázy „${(S.tl && (S.tl.phases.find((x) => x.id === lane.phase) || {}).label) || lane.phase}“`);
+    if (lane.from) parts.push(t('start: ') + L(lane.from));
+    if (lane.to) parts.push(t('end: ') + L(lane.to));
+    if (lane.len) parts.push(t('length: ') + L(lane.len));
+    parts.push(lane.unit === 's' ? t('in seconds from the start') : t('in % of the phase “{phase}”', { phase: t((S.tl && (S.tl.phases.find((x) => x.id === lane.phase) || {}).label) || lane.phase) }));
   }
-  return 'Potiahni okraj alebo celý pás. ' + parts.join(' · ');
+  return t('Drag an edge or the whole bar.') + ' ' + parts.join(' · ');
 }
 
 // ------------------------------------------------------------------ inspector
 function buildInspector() {
   const m = M(); if (!m) return;
   const pr = $('#presets'); pr.innerHTML = '';
-  for (const ps of m.presets) pr.append(el('button', { class: 'chip', dataset: { preset: ps.id }, title: presetTitle(ps), onclick: () => applyPreset(ps) }, ps.label));
+  for (const ps of m.presets) pr.append(el('button', { class: 'chip', dataset: { preset: ps.id }, title: presetTitle(ps), onclick: () => applyPreset(ps) }, t(ps.label)));
   pr.classList.toggle('hidden', !m.presets.length);
   const gs = $('#groups'); gs.innerHTML = '';
   for (const k of Object.keys(ctl)) delete ctl[k];
@@ -399,7 +405,7 @@ function buildInspector() {
     const det = el('details', { class: 'group', dataset: { group: g.id } });
     det.open = og[g.id] !== false;
     det.addEventListener('toggle', () => { if (!$('#filter').value) { og[g.id] = det.open; save(); } });
-    det.append(el('summary', {}, icon('chev'), el('span', {}, g.label), el('span', { class: 'gcount', title: 'počet zmenených parametrov v skupine' })));
+    det.append(el('summary', {}, icon('chev'), el('span', {}, t(g.label)), el('span', { class: 'gcount', title: t('changed parameters in this group') })));
     const rows = el('div', { class: 'rows' });
     for (const spec of g.params) rows.append(buildRow(spec, g));
     det.append(rows); gs.append(det);
@@ -408,29 +414,30 @@ function buildInspector() {
   applyFilter();
 }
 function defaultLabel(spec) {
-  if (spec.type === 'select') { const o = optPairs(spec).find((x) => x[0] === String(spec.default)); return o ? o[1] : spec.default; }
+  if (spec.type === 'select') { const o = optPairs(spec).find((x) => x[0] === String(spec.default)); return o ? t(o[1]) : spec.default; }
   if (spec.type === 'font') { const f = S.fonts.find((x) => x.file === spec.default); return f ? f.name : spec.default; }
+  if (spec.type === 'bool') return spec.default ? t('on') : t('off');
   if (spec.type === 'textarea') return String(spec.default).replace(/\n/g, ' / ');
-  return String(spec.default) + (spec.unit ? ' ' + spec.unit : '');
+  return String(spec.default) + (spec.unit ? ' ' + t(spec.unit) : '');
 }
 function rowTitle(spec) {
   const lines = [];
-  if (spec.hint) lines.push(spec.hint);
-  lines.push('Predvolené: ' + defaultLabel(spec));
-  if (spec.rebuild && REBUILD_NOTE[spec.rebuild]) lines.push('Zmena ' + REBUILD_NOTE[spec.rebuild] + '.');
+  if (spec.hint) lines.push(t(spec.hint));
+  lines.push(t('Default: ') + defaultLabel(spec));
+  if (spec.rebuild && REBUILD_NOTE[spec.rebuild]) lines.push(t('Changing it {what}.', { what: t(REBUILD_NOTE[spec.rebuild]) }));
   return lines.join('\n');
 }
 function presetTitle(ps) {
   const e = Object.entries(ps.params || {});
-  if (!e.length) return 'Predvolené hodnoty';
-  return e.map(([k, v]) => `${(specOf(k) || {}).label || k}: ${v}`).join('\n');
+  if (!e.length) return t('Default values');
+  return e.map(([k, v]) => `${t((specOf(k) || {}).label || k)}: ${v}`).join('\n');
 }
 function buildRow(spec, group) {
   const key = spec.key;
-  const label = el('label', { title: rowTitle(spec) }, el('i', { class: 'dot' }), el('span', {}, spec.label));
+  const label = el('label', { title: rowTitle(spec) }, el('i', { class: 'dot' }), el('span', {}, t(spec.label)));
   const c = el('div', { class: 'ctl' });
-  const rst = el('button', { class: 'rst', type: 'button', title: 'Vrátiť na predvolené: ' + defaultLabel(spec), onclick: () => edit(() => setParam(key, spec.default)) }, icon('reset'));
-  const row = el('div', { class: 'row ' + spec.type + (spec.rebuild === 'sim' ? ' heavy' : ''), dataset: { key, search: norm(`${spec.label} ${key} ${group.label} ${spec.hint || ''}`) } }, label, c, rst);
+  const rst = el('button', { class: 'rst', type: 'button', title: t('Back to the default: ') + defaultLabel(spec), onclick: () => edit(() => setParam(key, spec.default)) }, icon('reset'));
+  const row = el('div', { class: 'row ' + spec.type + (spec.rebuild === 'sim' ? ' heavy' : ''), dataset: { key, search: norm(`${t(spec.label)} ${spec.label} ${key} ${t(group.label)} ${group.label} ${t(spec.hint || '')} ${spec.hint || ''}`) } }, label, c, rst);
   let set;
   if (spec.type === 'float' || spec.type === 'int') {
     const step = spec.step && spec.step !== 'any' ? spec.step : (spec.type === 'int' ? 1 : 'any');
@@ -442,7 +449,7 @@ function buildRow(spec, group) {
     rg.addEventListener('wheel', (e) => { e.preventDefault(); const st = step === 'any' ? 0.1 : +step; edit(() => setParam(key, roundStep(spec, (+P()[key]) + (e.deltaY < 0 ? st : -st)))); }, { passive: false });
     nb.addEventListener('change', () => edit(() => setParam(key, nb.value)));
     nb.addEventListener('keydown', (e) => { if (e.key === 'Enter') nb.blur(); });
-    c.append(rg, nb, el('span', { class: 'unit', title: spec.unit || '' }, spec.unit || ''));
+    c.append(rg, nb, el('span', { class: 'unit', title: t(spec.unit || '') }, t(spec.unit || '')));
     set = (v) => { rg.value = v; if (document.activeElement !== nb) nb.value = fmtNum(v, step); };
   } else if (spec.type === 'color') {
     const ci = el('input', { type: 'color' });
@@ -457,13 +464,13 @@ function buildRow(spec, group) {
     c.append(ci, hx);
     set = (v) => { ci.value = v; hx.value = v; };
   } else if (spec.type === 'select') {
-    const se = el('select', {}, ...optPairs(spec).map(([v, l]) => el('option', { value: v }, l)));
+    const se = el('select', {}, ...optPairs(spec).map(([v, l]) => el('option', { value: v }, t(l))));
     se.addEventListener('change', () => edit(() => setParam(key, se.value)));
     c.append(se);
     set = (v) => { se.value = v; };
   } else if (spec.type === 'font') {
     const nm = el('span', {}, '');
-    const b = el('button', { class: 'fontpick', type: 'button', title: 'Vybrať písmo alebo nahrať vlastné (.ttf / .otf)' }, nm, icon('chev'));
+    const b = el('button', { class: 'fontpick', type: 'button', title: t('Pick a font or upload your own (.ttf / .otf)') }, nm, icon('chev'));
     b.addEventListener('click', () => openFontPicker(b, key));
     c.append(b);
     set = (v) => { const f = S.fonts.find((x) => x.file === v); nm.textContent = f ? f.name : v; ensureFontFace(v); nm.style.fontFamily = fontFamily(v); };
@@ -472,13 +479,13 @@ function buildRow(spec, group) {
     const fill = (v) => {
       const have = ((S.projectInfo && S.projectInfo.assets) || {})[spec.kind] || [];
       const opts = have.map((f) => [f, f]);
-      if (v && !have.includes(v)) opts.unshift([v, v + ' (v projekte chýba)']);
-      if (!opts.length) opts.push(['', 'Zatiaľ nič, nahraj súbor']);
+      if (v && !have.includes(v)) opts.unshift([v, v + ' ' + t('(missing from the project)')]);
+      if (!opts.length) opts.push(['', t('Nothing yet, upload a file')]);
       se.innerHTML = ''; for (const [val, l] of opts) se.append(el('option', { value: val }, l));
       se.value = v || '';
     };
     se.addEventListener('change', () => edit(() => setParam(key, se.value)));
-    const up = el('button', { class: 'ib sm', type: 'button', title: 'Nahrať nový súbor do projektu' }, icon('upload'));
+    const up = el('button', { class: 'ib sm', type: 'button', title: t('Upload a new file to the project') }, icon('upload'));
     up.addEventListener('click', assetFlow);
     c.append(se, up);
     set = (v) => fill(v);
@@ -524,7 +531,7 @@ function applyPreset(ps) {
   const m = M(); const vals = {};
   for (const k of m.presetKeys) { const spec = m.specs[k]; if (spec) vals[k] = (k in (ps.params || {})) ? ps.params[k] : spec.default; }
   edit(() => setParams(vals));
-  toast(`Predvoľba „${ps.label}“ použitá. Ctrl+Z ju vráti.`, 'ok', { ms: 2500 });
+  toast(t('Preset “{name}” applied. Ctrl+Z undoes it.', { name: t(ps.label) }), 'ok', { ms: 2500 });
 }
 function applyFilter() {
   const q = norm($('#filter').value.trim());
@@ -564,11 +571,11 @@ function openFontPicker(anchor, key) {
       const d = await api.upload('/api/font', file, { 'X-Filename': asciiName(file.name) });
       S.fonts = d.fonts || S.fonts;
       edit(() => setParam(key, d.file));
-      toast('Písmo pridané: ' + d.file, 'ok');
-    } catch (e) { toast('Písmo sa nepodarilo pridať: ' + e.message, 'err'); }
+      toast(t('Font added: ') + d.file, 'ok');
+    } catch (e) { toast(t('Could not add the font: ') + e.message, 'err'); }
     closePopover();
   });
-  pop.append(el('div', { class: 'fup' }, el('span', {}, 'Vlastné písmo (.ttf / .otf)'), el('button', { class: 'btn sm', type: 'button', onclick: () => inp.click() }, icon('upload'), 'Nahrať'), inp));
+  pop.append(el('div', { class: 'fup' }, el('span', {}, t('Your own font (.ttf / .otf)')), el('button', { class: 'btn sm', type: 'button', onclick: () => inp.click() }, icon('upload'), t('Upload')), inp));
   pop.classList.remove('hidden');
   const r = anchor.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + 'px';
@@ -596,9 +603,9 @@ function buildTimeline() {
   const ph = $('#tl-phases'); ph.innerHTML = ''; TL.phases = [];
   const keys = PHASE_KEYS[S.module] || {};
   for (const [id, label, video] of (PHASE_META[S.module] || [])) {
-    const seg = el('div', { class: 'phase ' + (id === 'hold' ? 'hold' : 'v' + video), dataset: { phase: id } }, el('span', { class: 'pl' }, label), el('small'));
+    const seg = el('div', { class: 'phase ' + (id === 'hold' ? 'hold' : 'v' + video), dataset: { phase: id } }, el('span', { class: 'pl' }, t(label)), el('small'));
     ph.append(seg);
-    const hd = el('div', { class: 'phase-handle', title: `Potiahni: dĺžka fázy „${label}“ (${(m.specs[keys[id]] || {}).label || keys[id]})` });
+    const hd = el('div', { class: 'phase-handle', title: t('Drag: the length of the phase “{phase}” ({param})', { phase: t(label), param: t((m.specs[keys[id]] || {}).label || keys[id]) }) });
     bindDrag(hd, { kind: 'phase', id, key: keys[id] });
     ph.append(hd);
     TL.phases.push({ id, seg, hd });
@@ -619,7 +626,7 @@ function buildTimeline() {
       bar.append(mid);
     }
     track.append(bar);
-    const lab = el('div', { class: 'tl-label', title: laneTitle(lane) }, el('span', {}, lane.label), el('span', { class: 'val' }));
+    const lab = el('div', { class: 'tl-label', title: laneTitle(lane) }, el('span', {}, t(lane.label)), el('span', { class: 'val' }));
     lanes.append(el('div', { class: 'lane', dataset: { lane: lane.id } }, lab, track));
     TL.lanes.push({ lane, track, bar, tip, val: lab.querySelector('.val') });
   }
@@ -650,13 +657,13 @@ function layoutTimeline() {
     const a = x(ph.t0), b = x(ph.t1);
     seg.style.left = a + 'px'; seg.style.width = Math.max(0, b - a) + 'px';
     seg.querySelector('small').textContent = fmtS(ph.t1 - ph.t0);
-    seg.title = `${ph.label} · ${fmtS(ph.t0)} – ${fmtS(ph.t1)}` + (PHASE_META[S.module] && PHASE_META[S.module].length > 1 ? ` · video ${ph.video}` : '');
+    seg.title = `${t(ph.label)} · ${fmtS(ph.t0)} – ${fmtS(ph.t1)}` + (PHASE_META[S.module] && PHASE_META[S.module].length > 1 ? ` · video ${ph.video}` : '');
     hd.style.left = b + 'px';
   }
   const mk = $('#tl-markers'); mk.innerHTML = ''; let lastX = -1e9, odd = false;
   for (const mr of (tl.markers || [])) {
     const px = x(mr.t); odd = (px - lastX < 64) ? !odd : false; lastX = px;
-    mk.append(el('div', { class: 'marker' + (odd ? ' odd' : ''), style: { left: px + 'px' }, title: `${mr.label} · ${fmtS(mr.t)}` }, el('i'), el('span', {}, mr.label)));
+    mk.append(el('div', { class: 'marker' + (odd ? ' odd' : ''), style: { left: px + 'px' }, title: `${t(mr.label)} · ${fmtS(mr.t)}` }, el('i'), el('span', {}, t(mr.label))));
   }
   for (const L of TL.lanes) {
     const sp = laneSpan(L.lane, tl, p);
@@ -732,10 +739,10 @@ function setTime(t, opts = {}) {
   updateTimeUI();
   if (!opts.noFrame) requestFrame({ interactive: !!opts.interactive, exact: !!opts.exact });
 }
-function phaseLabelAt(t) {
+function phaseLabelAt(at) {
   const tl = S.tl; if (!tl || !tl.phases.length) return '';
-  const ph = tl.phases.find((q) => t >= q.t0 && t < q.t1) || tl.phases[tl.phases.length - 1];
-  return ph.label + (tl.phases.length > 1 ? ` · video ${ph.video}` : '');
+  const ph = tl.phases.find((q) => at >= q.t0 && at < q.t1) || tl.phases[tl.phases.length - 1];
+  return t(ph.label) + (tl.phases.length > 1 ? ` · video ${ph.video}` : '');
 }
 function updateTimeUI() {
   const tl = S.tl; const total = tl ? tl.total : 0; if (S.t > total) S.t = total;
@@ -809,13 +816,13 @@ async function doFrame(want) {
   if (!S.tl) return;
   frameReq.inflight = true;
   const quick = !!want.interactive && !want.exact;
-  const mod = S.module; const t = S.t;
-  const body = { module: mod, params: P(), t, h: pickHeight(want), quick, q: quick ? 82 : 90 };
+  const mod = S.module; const at = S.t;
+  const body = { module: mod, params: P(), t: at, h: pickHeight(want), quick, q: quick ? 82 : 90 };
   try {
     const { blob, info } = await api.image('/api/frame', body);
-    if (mod === S.module) showFrame(blob, info, { t, quick });
+    if (mod === S.module) showFrame(blob, info, { t: at, quick });
   } catch (e) {
-    setStatusRight('Náhľad zlyhal: ' + e.message, true);
+    setStatusRight(t('The preview failed: ') + e.message, true);
   }
   frameReq.inflight = false;
   if (frameReq.dirty) { const d = frameReq.dirty; frameReq.dirty = null; doFrame(d); }
@@ -827,14 +834,19 @@ function showFrame(blob, info, meta) {
   img.src = url; img.dataset.url = url;
   img.classList.toggle('stale', !!meta.quick || !!info.approx);
   S.lastFrame = { t: meta.t, quick: meta.quick, approx: !!info.approx, info };
-  $('#hud-size').textContent = info.size ? `${info.size[0]}×${info.size[1]}${meta.quick ? ' rýchly' : ''}` : '';
-  $('#hud-ms').textContent = info.frame_ms != null ? `${Math.round(info.frame_ms)} ms` + (info.build_ms ? ` (+${Math.round(info.build_ms)} ms stavba)` : '') : '';
-  $('#hud-approx').classList.toggle('hidden', !info.approx);
+  renderFrameInfo();
   updateSim(info.sim);
-  const w = $('#warnings'); w.innerHTML = ''; const ws = info.warnings || [];
-  w.classList.toggle('hidden', !ws.length); for (const s of ws) w.append(el('div', {}, s));
-  setStatusRight(`${info.size ? info.size[0] + '×' + info.size[1] : ''} · ${Math.round(info.frame_ms || 0)} ms${info.particles ? ' · ' + info.particles + ' častíc' : ''}`);
   if (info.approx || (info.sim && info.sim.busy)) startSimPoll();
+}
+function renderFrameInfo() {
+  const lf = S.lastFrame; if (!lf) return;
+  const info = lf.info || {};
+  $('#hud-size').textContent = info.size ? `${info.size[0]}×${info.size[1]}${lf.quick ? ' ' + t('fast') : ''}` : '';
+  $('#hud-ms').textContent = info.frame_ms != null ? `${Math.round(info.frame_ms)} ms` + (info.build_ms ? ' ' + t('(+{ms} ms build)', { ms: Math.round(info.build_ms) }) : '') : '';
+  $('#hud-approx').classList.toggle('hidden', !info.approx);
+  const w = $('#warnings'); w.innerHTML = ''; const ws = info.warnings || [];
+  w.classList.toggle('hidden', !ws.length); for (const s of ws) w.append(el('div', {}, t(s)));
+  setStatusRight(`${info.size ? info.size[0] + '×' + info.size[1] : ''} · ${Math.round(info.frame_ms || 0)} ms${info.particles ? ' · ' + tp(info.particles, '{n} particle', '{n} particles') : ''}`);
 }
 function updateSim(sim) {
   const box = $('#sim');
@@ -842,7 +854,7 @@ function updateSim(sim) {
   box.classList.remove('hidden');
   const pct = sim.total ? Math.round(100 * sim.done / sim.total) : 0;
   $('#sim-fill').style.width = pct + '%';
-  $('#sim-text').textContent = sim.error ? ('Simulácia zlyhala: ' + sim.error) : `Simulácia ohňa ${pct} %`;
+  $('#sim-text').textContent = sim.error ? (t('The simulation failed: ') + sim.error) : t('Fire simulation {pct} %', { pct });
 }
 function startSimPoll() {
   if (S.simPoll) return;
@@ -890,13 +902,13 @@ function fitViewer() {
 
 // ------------------------------------------------------------------ status, toasts, modal
 function setStatusLeft() {
-  const i = S.info; $('#st-left').textContent = `${i.app_name || 'CROM'} ${i.app || ''} · ${(S.projectInfo && S.projectInfo.name) || ''} · ${moduleLabel(S.module)} · engine v${i.engine || '?'} · ${i.cpus || '?'} jadier`;
+  const i = S.info; $('#st-left').textContent = `${i.app_name || 'CROM'} ${i.app || ''} · ${(S.projectInfo && S.projectInfo.name) || ''} · ${moduleLabel(S.module)} · engine v${i.engine || '?'} · ${tp(i.cpus || 0, '{n} core', '{n} cores')}`;
 }
 function setStatusRight(text, err) { const n = $('#st-right'); n.textContent = text || ''; n.style.color = err ? 'var(--err)' : ''; }
 function toast(text, kind = 'info', opts = {}) {
   const t = el('div', { class: 'toast ' + kind }, icon(kind === 'ok' ? 'check' : (kind === 'err' || kind === 'warn') ? 'alert' : 'spark'), el('span', { class: 't' }, text));
   if (opts.action) t.append(el('button', { class: 'btn sm', type: 'button', onclick: () => { t.remove(); opts.action.fn(); } }, opts.action.label));
-  t.append(el('button', { class: 'ib', type: 'button', title: 'Zavrieť', onclick: () => t.remove() }, icon('x')));
+  t.append(el('button', { class: 'ib', type: 'button', title: I18N.t('Close'), onclick: () => t.remove() }, icon('x')));
   $('#toasts').append(t);
   setTimeout(() => t.remove(), opts.ms || (kind === 'err' ? 10000 : 4500));
   return t;
@@ -919,44 +931,44 @@ function askText({ title, label, value, buttons }) {
     const inp = el('input', { type: 'text', value: value || '', placeholder: label || '', spellcheck: 'false' });
     const btns = (buttons || [{ label: 'OK', action: 'ok', primary: true }]).map((bt) => el('button', { class: 'btn' + (bt.primary ? ' primary' : ''), type: 'button', onclick: () => finish({ text: inp.value.trim(), action: bt.action }) }, bt.label));
     inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const pb = buttons ? (buttons.find((x) => x.primary) || buttons[0]) : { action: 'ok' }; finish({ text: inp.value.trim(), action: pb.action }); } });
-    openModal({ title, body: el('div', {}, label ? el('div', { class: 'hint' }, label) : null, inp), foot: [el('button', { class: 'btn', type: 'button', onclick: () => finish(null) }, 'Zrušiť'), ...btns], onClose: () => finish(null) });
+    openModal({ title, body: el('div', {}, label ? el('div', { class: 'hint' }, label) : null, inp), foot: [el('button', { class: 'btn', type: 'button', onclick: () => finish(null) }, t('Cancel')), ...btns], onClose: () => finish(null) });
   });
 }
 function confirmModal(title, text, okLabel, danger) {
   return new Promise((resolve) => {
     let done = false; const finish = (r) => { if (done) return; done = true; closeModal(); resolve(r); };
     openModal({ title, body: el('div', { class: 'hint', style: { fontSize: '12.5px', color: 'var(--fg)' } }, text),
-      foot: [el('button', { class: 'btn', type: 'button', onclick: () => finish(false) }, 'Zrušiť'), el('button', { class: 'btn ' + (danger ? 'danger' : 'primary'), type: 'button', onclick: () => finish(true) }, okLabel || 'OK')], onClose: () => finish(false) });
+      foot: [el('button', { class: 'btn', type: 'button', onclick: () => finish(false) }, t('Cancel')), el('button', { class: 'btn ' + (danger ? 'danger' : 'primary'), type: 'button', onclick: () => finish(true) }, okLabel || 'OK')], onClose: () => finish(false) });
   });
 }
 function playVideo(rel, title) {
   const v = el('video', { controls: true, autoplay: true, src: fileUrl(rel) });
-  openModal({ title: title || normRel(rel).split('/').pop(), body: v, foot: [el('button', { class: 'btn', type: 'button', onclick: () => openFolder(normRel(rel).split('/').slice(0, -1).join('/')) }, icon('folder'), 'Otvoriť priečinok')] });
+  openModal({ title: title || normRel(rel).split('/').pop(), body: v, foot: [el('button', { class: 'btn', type: 'button', onclick: () => openFolder(normRel(rel).split('/').slice(0, -1).join('/')) }, icon('folder'), t('Open folder'))] });
 }
 function showImage(rel, title) { showImageSrc(fileUrl(rel), title || normRel(rel).split('/').pop()); }
 function showImageSrc(src, title) { openModal({ title: title || '', body: el('img', { class: 'big', src }) }); }
 async function openFolder(rel) {
-  try { await api.post('/api/open', { rel: rel || '' }); } catch (e) { toast('Priečinok sa nepodarilo otvoriť: ' + e.message, 'err'); }
+  try { await api.post('/api/open', { rel: rel || '' }); } catch (e) { toast(t('Could not open the folder: ') + e.message, 'err'); }
 }
 
 // ------------------------------------------------------------------ name, recipe badge, summary
-function updateNamePlaceholder() { $('#name').placeholder = S.tlName || 'Názov úlohy'; $('#recipe-name').placeholder = currentName() || 'Názov receptu'; }
+function updateNamePlaceholder() { $('#name').placeholder = S.tlName || t('Job name'); $('#recipe-name').placeholder = currentName() || t('Recipe name'); }
 function updateRecipeBadge() {
   const b = $('#recipe-badge'); const cur = S.recipe[S.module];
   if (!cur) { b.classList.add('hidden'); $('#recipe-overwrite').disabled = true; return; }
   const dirty = JSON.stringify(cur.params) !== JSON.stringify(P());
   b.classList.remove('hidden'); b.innerHTML = ''; b.append(icon('doc'), cur.name + (dirty ? ' •' : ''));
-  b.title = 'Načítaný recept: ' + cur.name + (dirty ? ' (upravené, neuložené)' : '');
-  $('#recipe-overwrite').disabled = false; $('#recipe-overwrite').title = 'Prepísať recept „' + cur.name + '“ aktuálnymi parametrami';
+  b.title = t('Loaded recipe: ') + cur.name + (dirty ? ' ' + t('(changed, not saved)') : '');
+  $('#recipe-overwrite').disabled = false; $('#recipe-overwrite').title = t('Overwrite the recipe “{name}” with the current parameters', { name: cur.name });
 }
 function updateRenderSummary() {
   const p = P(); const tl = S.tl; if (!p || !tl) return;
   const [rw, rh] = resOf(); const fps = tl.fps; const frames = Math.round(tl.total * fps);
-  const rows = [['Modul', moduleLabel(S.module)], ['Názov', currentName() || '—'], ['Priečinok', (S.tlSlug || '…') + '/vNN'],
-    ['Obraz', `${rw}×${rh} · ${fps} fps · CRF ${p.crf}`]];
-  if (tl.phases.length > 1) rows.push(['Dĺžka', `video 1: ${fmtS(tl.t1)} · video 2: ${fmtS(tl.total - tl.t1)}`]);
-  else rows.push(['Dĺžka', fmtS(tl.total)]);
-  rows.push(['Snímky', `${frames} (odhad ${fmtEta(frames / Math.max(1, (S.info.cpus || 4) * 0.9))} pri finále)`]);
+  const rows = [[t('Module'), moduleLabel(S.module)], [t('Name'), currentName() || '—'], [t('Folder'), (S.tlSlug || '…') + '/vNN'],
+    [t('Picture'), `${rw}×${rh} · ${fps} fps · CRF ${p.crf}`]];
+  if (tl.phases.length > 1) rows.push([t('Length'), `video 1: ${fmtS(tl.t1)} · video 2: ${fmtS(tl.total - tl.t1)}`]);
+  else rows.push([t('Length'), fmtS(tl.total)]);
+  rows.push([t('Frames'), t('{frames} (about {eta} for the final)', { frames, eta: fmtEta(frames / Math.max(1, (S.info.cpus || 4) * 0.9)) })]);
   const kv = $('#render-summary'); kv.innerHTML = '';
   for (const [k, v] of rows) kv.append(el('span', {}, k), el('span', { title: v }, v));
 }
@@ -967,13 +979,13 @@ async function render(kind, titles) {
   if (titles && titles.length) body.batch = titles;
   try {
     const d = await api.post('/api/render', body); const n = (d.jobs || []).length;
-    toast(kind === 'draft' ? 'Rýchly náhľad je vo fronte (960×540).' : (n > 1 ? `${n} úloh je vo fronte.` : 'Finálny render je vo fronte.'), 'ok');
+    toast(kind === 'draft' ? t('The quick preview is in the queue (960×540).') : (n > 1 ? t('{n} jobs are in the queue.', { n }) : t('The final render is in the queue.')), 'ok');
     showTab('render'); pollJobs();
-  } catch (e) { toast('Render sa nepodarilo spustiť: ' + e.message, 'err'); }
+  } catch (e) { toast(t('Could not start the render: ') + e.message, 'err'); }
 }
 function renderBatch() {
   const lines = $('#batch').value.split('\n').map((s) => s.trim()).filter(Boolean);
-  if (!lines.length) { toast('Napíš aspoň jeden titulok, každý na vlastný riadok.', 'warn'); return; }
+  if (!lines.length) { toast(t('Write at least one title, each on its own line.'), 'warn'); return; }
   render('final', lines);
 }
 let jobsTimer = null;
@@ -983,8 +995,8 @@ async function pollJobs() {
   const active = S.jobs.some((j) => j.state === 'queued' || j.state === 'running');
   jobsTimer = setTimeout(pollJobs, active ? 1000 : 5000);
 }
-const KIND_LABEL = { draft: 'náhľad', final: 'finál' };
-const STATE_LABEL = { queued: 'vo fronte', running: 'beží', done: 'hotovo', error: 'chyba', cancelled: 'zrušené' };
+const KIND_LABEL = { draft: 'preview', final: 'final' };
+const STATE_LABEL = { queued: 'queued', running: 'running', done: 'done', error: 'error', cancelled: 'cancelled' };
 function renderJobs() {
   const ul = $('#jobs'); ul.innerHTML = '';
   $('#jobs-empty').classList.toggle('hidden', S.jobs.length > 0);
@@ -995,50 +1007,50 @@ function renderJobs() {
     if (prev && prev !== j.state) {
       if (j.state === 'done') {
         const mp4 = (j.files || []).map(normRel).find((f) => f.endsWith('.mp4'));
-        toast(`${j.kind === 'draft' ? 'Náhľad' : 'Render'} hotový: ${j.title || j.name}`, 'ok', mp4 ? { action: { label: 'Prehrať', fn: () => playVideo(mp4, j.title || j.name) }, ms: 8000 } : {});
+        toast(t(j.kind === 'draft' ? 'Preview done: {name}' : 'Render done: {name}', { name: j.title || j.name }), 'ok', mp4 ? { action: { label: t('Play'), fn: () => playVideo(mp4, j.title || j.name) }, ms: 8000 } : {});
         if (j.kind === 'final') refreshOut = true;
-      } else if (j.state === 'error') toast(`Render zlyhal: ${j.title || j.name} · ${j.msg || ''}`, 'err');
+      } else if (j.state === 'error') toast(t('The render failed: {name}', { name: j.title || j.name }) + ' · ' + t(j.msg || ''), 'err');
     }
     S.jobStates[j.id] = j.state;
     const li = el('li', { class: 'item job ' + j.state });
     const line = el('div', { class: 'line' },
       el('span', { class: 'ttl', title: j.title || j.name }, j.title || j.name || '—'),
-      el('span', { class: 'pill ' + (j.kind === 'final' ? 'v1' : '') }, KIND_LABEL[j.kind] || j.kind),
+      el('span', { class: 'pill ' + (j.kind === 'final' ? 'v1' : '') }, t(KIND_LABEL[j.kind] || j.kind)),
       j.version ? el('span', { class: 'pill' }, j.version) : null,
       j.batch ? el('span', { class: 'pill' }, j.batch) : null,
-      (j.hash && j.hash === hash && j.module === S.module) ? el('span', { class: 'pill ok', title: 'Tento render zodpovedá aktuálnym parametrom' }, 'aktuálne') : null);
+      (j.hash && j.hash === hash && j.module === S.module) ? el('span', { class: 'pill ok', title: t('This render matches the current parameters') }, t('current')) : null);
     const acts = el('span', { class: 'acts' });
-    if (j.state === 'queued' || j.state === 'running') acts.append(el('button', { class: 'ib', title: 'Zrušiť', onclick: () => cancelJob(j.id) }, icon('stop')));
-    if (j.rel_dir && j.state === 'done') acts.append(el('button', { class: 'ib', title: 'Otvoriť priečinok', onclick: () => openFolder(j.rel_dir) }, icon('folder')));
+    if (j.state === 'queued' || j.state === 'running') acts.append(el('button', { class: 'ib', title: t('Cancel'), onclick: () => cancelJob(j.id) }, icon('stop')));
+    if (j.rel_dir && j.state === 'done') acts.append(el('button', { class: 'ib', title: t('Open folder'), onclick: () => openFolder(j.rel_dir) }, icon('folder')));
     line.append(acts); li.append(line);
     const pct = j.total ? Math.round(100 * (j.done || 0) / j.total) : (j.state === 'done' ? 100 : 0);
     li.append(el('div', { class: 'prog' }, el('i', { style: { width: pct + '%' } })));
     const meta = [];
     if (j.res) meta.push(j.res);
-    if (j.state === 'running') { meta.push(`${j.done || 0}/${j.total || '?'} snímok`); if (j.rate) meta.push(`${(+j.rate).toFixed(1)} fps`); if (j.eta != null) meta.push('zostáva ' + fmtEta(j.eta)); }
+    if (j.state === 'running') { meta.push(t('{done}/{total} frames', { done: j.done || 0, total: j.total || '?' })); if (j.rate) meta.push(`${(+j.rate).toFixed(1)} fps`); if (j.eta != null) meta.push(t('{eta} left', { eta: fmtEta(j.eta) })); }
     else if (j.state === 'done') { if (j.sec != null) meta.push(`${Math.round(j.sec)} s`); if (j.rate) meta.push(`${(+j.rate).toFixed(1)} fps`); }
-    meta.push(STATE_LABEL[j.state] || j.state);
+    meta.push(t(STATE_LABEL[j.state] || j.state));
     if (j.created) meta.push(fmtDate(j.created));
     li.append(el('div', { class: 'meta' }, meta.map((m, i) => el('span', {}, (i ? '· ' : '') + m))));
-    if (j.msg && j.state !== 'done') li.append(el('div', { class: 'msg' + (j.state === 'error' ? ' err' : '') }, j.msg));
+    if (j.msg && j.state !== 'done') li.append(el('div', { class: 'msg' + (j.state === 'error' ? ' err' : '') }, t(j.msg)));
     if (j.state === 'done' && (j.files || []).length) {
       const files = el('div', { class: 'files' });
       for (const rel0 of j.files) {
         const rel = normRel(rel0); const name = rel.split('/').pop();
-        if (rel.endsWith('.mp4')) files.append(el('div', { class: 'file' }, el('button', { class: 'ib', title: 'Prehrať', onclick: () => playVideo(rel, name) }, icon('play')), el('span', { class: 'fn', title: rel }, name)));
+        if (rel.endsWith('.mp4')) files.append(el('div', { class: 'file' }, el('button', { class: 'ib', title: t('Play'), onclick: () => playVideo(rel, name) }, icon('play')), el('span', { class: 'fn', title: rel }, name)));
         else if (/\.(png|jpg)$/.test(rel)) files.append(el('div', { class: 'file' }, el('img', { class: 'thumb', src: fileUrl(rel), loading: 'lazy', onclick: () => showImage(rel, name) }), el('span', { class: 'fn', title: rel }, name)));
-        else if (rel.endsWith('.json')) files.append(el('div', { class: 'file' }, el('button', { class: 'ib', title: 'Načítať recept z tohto renderu', onclick: () => loadRecipeFromFile(rel) }, icon('doc')), el('span', { class: 'fn', title: rel }, name)));
+        else if (rel.endsWith('.json')) files.append(el('div', { class: 'file' }, el('button', { class: 'ib', title: t('Load the recipe from this render'), onclick: () => loadRecipeFromFile(rel) }, icon('doc')), el('span', { class: 'fn', title: rel }, name)));
       }
       li.append(files);
     }
-    if (j.warnings && j.warnings.length) li.append(el('div', { class: 'msg' }, j.warnings.join(' · ')));
+    if (j.warnings && j.warnings.length) li.append(el('div', { class: 'msg' }, j.warnings.map((w) => t(w)).join(' · ')));
     ul.append(li);
   }
   const act = S.jobs.find((j) => j.state === 'running') || S.jobs.find((j) => j.state === 'queued');
   const sj = $('#st-job'); sj.innerHTML = '';
   if (act) {
     const pct = act.total ? Math.round(100 * (act.done || 0) / act.total) : 0;
-    sj.append(el('span', {}, `${act.kind === 'draft' ? 'náhľad' : 'render'}: ${act.title || act.name}`), el('span', { class: 'bar' }, el('i', { style: { width: pct + '%' } })), el('span', {}, act.state === 'running' ? `${pct} %${act.eta != null ? ' · ' + fmtEta(act.eta) : ''}` : 'vo fronte'));
+    sj.append(el('span', {}, `${t(act.kind === 'draft' ? 'preview' : 'render')}: ${act.title || act.name}`), el('span', { class: 'bar' }, el('i', { style: { width: pct + '%' } })), el('span', {}, act.state === 'running' ? `${pct} %${act.eta != null ? ' · ' + fmtEta(act.eta) : ''}` : t('queued')));
   }
   if (refreshOut) refreshOutputs();
 }
@@ -1058,21 +1070,21 @@ function renderOutputs() {
     const vers = el('div', { class: 'versions' + (open ? '' : ' hidden') });
     for (const v of o.versions) {
       const vh = el('div', { class: 'vh' }, el('b', {}, v.v), el('span', {}, moduleLabel(v.module)), el('span', { class: 'meta' }, fmtDate(v.mtime)),
-        el('span', { class: 'acts' }, el('button', { class: 'ib', title: 'Otvoriť priečinok', onclick: () => openFolder(v.rel) }, icon('folder'))));
+        el('span', { class: 'acts' }, el('button', { class: 'ib', title: t('Open folder'), onclick: () => openFolder(v.rel) }, icon('folder'))));
       const files = el('div', { class: 'files' });
       for (const f of v.files) files.append(fileRow(f));
       vers.append(el('div', { class: 'version' }, vh, files));
     }
-    const head = el('div', { class: 'line' }, icon('chev'), el('span', { class: 'ttl' }, o.slug), el('span', { class: 'meta' }, `${o.versions.length} ${plural(o.versions.length, 'verzia', 'verzie', 'verzií')}`));
+    const head = el('div', { class: 'line' }, icon('chev'), el('span', { class: 'ttl' }, o.slug), el('span', { class: 'meta' }, tp(o.versions.length, '{n} version', '{n} versions')));
     head.addEventListener('click', () => { S.openOut = (open ? '__none__' : o.slug); renderOutputs(); });
     ul.append(el('li', { class: 'item slug' }, head, vers));
   });
 }
 function fileRow(f) {
   const rel = normRel(f.rel); const row = el('div', { class: 'file' });
-  if (f.kind === 'video') row.append(el('button', { class: 'ib', title: 'Prehrať', onclick: () => playVideo(rel, f.name) }, icon('play')), el('span', { class: 'fn', title: f.name }, f.name), f.part ? el('span', { class: 'pill ' + (f.part === 2 ? 'v2' : 'v1') }, 'video ' + f.part) : null, el('span', { class: 'sz' }, fmtBytes(f.size)));
+  if (f.kind === 'video') row.append(...[el('button', { class: 'ib', title: t('Play'), onclick: () => playVideo(rel, f.name) }, icon('play')), el('span', { class: 'fn', title: f.name }, f.name), f.part ? el('span', { class: 'pill ' + (f.part === 2 ? 'v2' : 'v1') }, 'video ' + f.part) : null, el('span', { class: 'sz' }, fmtBytes(f.size))].filter(Boolean));
   else if (f.kind === 'image') row.append(el('img', { class: 'thumb', src: fileUrl(rel), loading: 'lazy', onclick: () => showImage(rel, f.name) }), el('span', { class: 'fn', title: f.name }, f.name), el('span', { class: 'sz' }, fmtBytes(f.size)));
-  else if (f.kind === 'recipe') row.append(el('button', { class: 'ib', title: 'Načítať recept z tohto renderu', onclick: () => loadRecipeFromFile(rel) }, icon('doc')), el('span', { class: 'fn', title: f.name }, f.name), el('button', { class: 'btn sm', type: 'button', onclick: () => loadRecipeFromFile(rel) }, 'Načítať'));
+  else if (f.kind === 'recipe') row.append(el('button', { class: 'ib', title: t('Load the recipe from this render'), onclick: () => loadRecipeFromFile(rel) }, icon('doc')), el('span', { class: 'fn', title: f.name }, f.name), el('button', { class: 'btn sm', type: 'button', onclick: () => loadRecipeFromFile(rel) }, t('Load')));
   else row.append(el('span', { class: 'fn' }, f.name));
   return row;
 }
@@ -1089,34 +1101,35 @@ function renderRecipes() {
     const li = el('li', { class: 'item recipe' + (cur && cur.file === r.file ? ' current' : '') });
     const line = el('div', { class: 'line' },
       r.metal ? el('span', { style: { width: '10px', height: '10px', borderRadius: '50%', background: r.metal, flex: 'none', boxShadow: '0 0 0 1px rgba(255,255,255,.2)' } }) : null,
-      el('span', { class: 'ttl', title: r.broken ? 'Súbor sa nedá prečítať' : 'Načítať recept', onclick: () => { if (!r.broken) loadRecipe(r.file); } }, r.name),
-      r.module ? el('span', { class: 'pill' }, moduleLabel(r.module)) : el('span', { class: 'pill err' }, 'poškodený'),
+      el('span', { class: 'ttl', title: r.broken ? t('The file cannot be read') : t('Load the recipe'), onclick: () => { if (!r.broken) loadRecipe(r.file); } }, r.name),
+      r.module ? el('span', { class: 'pill' }, moduleLabel(r.module)) : el('span', { class: 'pill err' }, t('damaged')),
       el('span', { class: 'acts' },
-        el('button', { class: 'ib', title: 'Načítať', onclick: () => { if (!r.broken) loadRecipe(r.file); } }, icon('download')),
-        el('button', { class: 'ib', title: 'Presunúť do koša (recepty/_kos)', onclick: () => trashRecipe(r) }, icon('trash'))));
+        el('button', { class: 'ib', title: t('Load'), onclick: () => { if (!r.broken) loadRecipe(r.file); } }, icon('download')),
+        el('button', { class: 'ib', title: t('Move to the trash (recipes/_trash)'), onclick: () => trashRecipe(r) }, icon('trash'))));
     li.append(line, el('div', { class: 'meta' }, el('span', {}, r.title || ''), el('span', {}, '· ' + fmtDate(r.saved || r.mtime)), el('span', { title: r.file }, '· ' + r.file)));
     ul.append(li);
   }
 }
 async function loadRecipe(file) {
   try { const rec = await api.get('/api/recipe?file=' + encodeURIComponent(file)); await applyRecipe(rec); }
-  catch (e) { toast('Recept sa nepodarilo načítať: ' + e.message, 'err'); }
+  catch (e) { toast(t('Could not load the recipe: ') + e.message, 'err'); }
 }
 async function loadRecipeFromFile(rel) {
   try {
     const r = await fetch(fileUrl(rel), { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status);
-    const d = await r.json(); if (!d || typeof d.params !== 'object') throw new Error('súbor neobsahuje parametre');
+    const d = await r.json(); if (!d || typeof d.params !== 'object') throw new Error(t('the file has no parameters'));
     await applyRecipe({ name: d.name || normRel(rel).split('/').pop(), module: d.module || S.module, params: d.params });
-  } catch (e) { toast('Recept sa nepodarilo načítať: ' + e.message, 'err'); }
+  } catch (e) { toast(t('Could not load the recipe: ') + e.message, 'err'); }
 }
 async function applyRecipe(rec) {
-  const mod = rec.module && S.modules.some((m) => m.id === rec.module) ? rec.module : S.module;
+  const want = modId(rec.module);
+  const mod = want && S.modules.some((m) => m.id === want) ? want : S.module;
   if (mod !== S.module) await switchModule(mod);
   const full = sanitize(mod, rec.params || {});
   edit(() => setParams(full));
   S.recipe[mod] = rec.file ? { file: rec.file, name: rec.name, params: clone(P()) } : null;
   updateRecipeBadge(); renderRecipes(); save();
-  toast(`Recept „${rec.name}“ načítaný${mod !== rec.module ? '' : ''}. Ctrl+Z vráti predchádzajúce nastavenie.`, 'ok');
+  toast(t('Recipe “{name}” loaded. Ctrl+Z brings back the previous settings.', { name: rec.name }), 'ok');
 }
 async function saveRecipe(name, overwriteFile) {
   const body = { name: name || currentName() || moduleLabel(S.module), module: S.module, params: P() };
@@ -1125,22 +1138,22 @@ async function saveRecipe(name, overwriteFile) {
     const d = await api.post('/api/recipe', body);
     S.recipe[S.module] = { file: d.file, name: d.name, params: clone(P()) };
     updateRecipeBadge(); refreshRecipes(); save();
-    toast(`Recept „${d.name}“ uložený (${d.file}).`, 'ok', { action: { label: 'Priečinok', fn: () => openFolder('@recipes') } });
-  } catch (e) { toast('Recept sa nepodarilo uložiť: ' + e.message, 'err'); }
+    toast(t('Recipe “{name}” saved ({file}).', { name: d.name, file: d.file }), 'ok', { action: { label: t('Folder'), fn: () => openFolder('@recipes') } });
+  } catch (e) { toast(t('Could not save the recipe: ') + e.message, 'err'); }
 }
 async function saveRecipeFlow() {
   const cur = S.recipe[S.module];
-  const r = await askText({ title: 'Uložiť recept', label: 'Recept je kompletné nastavenie modulu „' + moduleLabel(S.module) + '“, ku ktorému sa dá vrátiť.', value: (cur && cur.name) || currentName(),
-    buttons: cur ? [{ label: 'Prepísať „' + cur.name + '“', action: 'overwrite' }, { label: 'Uložiť ako nový', action: 'new', primary: true }] : [{ label: 'Uložiť', action: 'new', primary: true }] });
+  const r = await askText({ title: t('Save recipe'), label: t('A recipe is the complete setup of the module “{module}” that you can come back to.', { module: moduleLabel(S.module) }), value: (cur && cur.name) || currentName(),
+    buttons: cur ? [{ label: t('Overwrite “{name}”', { name: cur.name }), action: 'overwrite' }, { label: t('Save as new'), action: 'new', primary: true }] : [{ label: t('Save'), action: 'new', primary: true }] });
   if (!r) return;
   await saveRecipe(r.text, r.action === 'overwrite' && cur ? cur.file : null);
 }
 async function trashRecipe(r) {
-  if (!(await confirmModal('Presunúť recept do koša', `Recept „${r.name}“ (${r.file}) sa presunie do priečinka recepty/_kos. Dá sa odtiaľ ručne vrátiť.`, 'Do koša', true))) return;
+  if (!(await confirmModal(t('Move the recipe to the trash'), t('The recipe “{name}” ({file}) moves to the recipes/_trash folder. You can move it back from there by hand.', { name: r.name, file: r.file }), t('Move to trash'), true))) return;
   try {
     await api.post('/api/recipe/delete', { file: r.file });
     if (S.recipe[S.module] && S.recipe[S.module].file === r.file) { S.recipe[S.module] = null; updateRecipeBadge(); }
-    refreshRecipes(); toast('Recept je v koši.', 'ok');
+    refreshRecipes(); toast(t('The recipe is in the trash.'), 'ok');
   } catch (e) { toast(e.message, 'err'); }
 }
 function exportRecipe() {
@@ -1154,9 +1167,9 @@ function importRecipe(file) {
   const rd = new FileReader();
   rd.onload = async () => {
     try {
-      const d = JSON.parse(String(rd.result)); if (!d || typeof d.params !== 'object') throw new Error('súbor neobsahuje parametre');
+      const d = JSON.parse(String(rd.result)); if (!d || typeof d.params !== 'object') throw new Error(t('the file has no parameters'));
       await applyRecipe({ name: d.name || file.name.replace(/\.json$/i, ''), module: d.module || S.module, params: d.params });
-    } catch (e) { toast('Import zlyhal: ' + e.message, 'err'); }
+    } catch (e) { toast(t('The import failed: ') + e.message, 'err'); }
   };
   rd.readAsText(file);
 }
@@ -1166,8 +1179,8 @@ async function saveStill() {
   try {
     const d = await api.post('/api/still', { module: S.module, params: P(), t: S.t });
     const rel = normRel(d.file);
-    toast('Snímka uložená: ' + rel.split('/').pop(), 'ok', { action: { label: 'Otvoriť', fn: () => showImage(rel) }, ms: 8000 });
-  } catch (e) { toast('Snímka sa nepodarila: ' + e.message, 'err'); }
+    toast(t('Frame saved: ') + rel.split('/').pop(), 'ok', { action: { label: t('Open'), fn: () => showImage(rel) }, ms: 8000 });
+  } catch (e) { toast(t('Could not save the frame: ') + e.message, 'err'); }
 }
 function showTab(id) {
   S.tab = id;
@@ -1188,8 +1201,11 @@ function restore() {
   try {
     const d = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (!d || typeof d !== 'object') return;
     if (typeof d.project === 'string') S.project = d.project;
-    if (typeof d.module === 'string') S.module = d.module;
-    if (d.params && typeof d.params === 'object') S.params = d.params;
+    if (typeof d.module === 'string') S.module = modId(d.module);
+    if (d.params && typeof d.params === 'object') {
+      S.params = {};
+      for (const [k, v] of Object.entries(d.params)) S.params[modId(k)] = v;
+    }
     if (d.names && typeof d.names === 'object') S.names = d.names;
     if (d.tPer && typeof d.tPer === 'object') S.tPer = d.tPer;
     if (typeof d.tab === 'string') S.tab = d.tab;
@@ -1203,7 +1219,7 @@ function restore() {
 function bindUI() {
   $('#filter').addEventListener('input', applyFilter);
   $('#reset-all').addEventListener('click', async () => {
-    if (await confirmModal('Predvolené hodnoty', `Všetky parametre modulu „${moduleLabel(S.module)}“ sa vrátia na predvolené hodnoty. Ctrl+Z to vráti.`, 'Vrátiť na predvolené')) { edit(() => setParams(M().defaults)); toast('Parametre sú na predvolených hodnotách.', 'ok'); }
+    if (await confirmModal(t('Default values'), t('Every parameter of the module “{module}” goes back to its default value. Ctrl+Z undoes it.', { module: moduleLabel(S.module) }), t('Reset to defaults'))) { edit(() => setParams(M().defaults)); toast(t('The parameters are at their default values.'), 'ok'); }
   });
   $('#undo').addEventListener('click', undo); $('#redo').addEventListener('click', redo);
   $('#save-recipe').addEventListener('click', saveRecipeFlow);
@@ -1274,6 +1290,30 @@ function onKey(e) {
   }
 }
 
+// ------------------------------------------------------------------ language
+function renderLangSwitch() {
+  for (const b of $$('#lang button')) {
+    const on = b.dataset.lang === I18N.lang();
+    b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+}
+function relocalize() {
+  // the static page is translated by i18n.js; everything built from data is built again here
+  renderLangSwitch();
+  if (!M()) return;
+  closePopover();
+  renderModuleTabs(); renderProjects(); updateBatchBox();
+  buildInspector(); buildTimeline(); layoutTimeline(); updateTimeUI();
+  updateRecipeBadge(); updateUndoButtons(); updateRenderSummary(); updateNamePlaceholder(); setStatusLeft();
+  renderFrameInfo(); renderJobs(); renderOutputs(); renderRecipes();
+  if (window.AI && window.AI.onLang) window.AI.onLang();
+}
+function bindLang() {
+  for (const b of $$('#lang button')) b.addEventListener('click', () => I18N.setLang(b.dataset.lang));
+  document.addEventListener('crom:lang', relocalize);
+  renderLangSwitch();
+}
+
 async function applyParams(module, params) {
   if (module && module !== S.module) await switchModule(module);
   let n = 0; edit(() => { n = setParams(params || {}).length; });
@@ -1282,6 +1322,7 @@ async function applyParams(module, params) {
 
 async function boot() {
   restore();
+  bindLang();
   bindUI();
   try {
     try { await switchModule(S.module, true); }
@@ -1291,15 +1332,15 @@ async function boot() {
       await switchModule(S.module, true);
     }
   } catch (e) {
-    $('#frame-empty').textContent = 'Server neodpovedá: ' + e.message;
-    toast('Nepodarilo sa načítať schému: ' + e.message, 'err', { ms: 20000 });
+    $('#frame-empty').textContent = t('The server does not answer: ') + e.message;
+    toast(t('Could not load the schema: ') + e.message, 'err', { ms: 20000 });
     return;
   }
   pollJobs(); refreshRecipes(); refreshOutputs();
   readyResolve(true);
 }
 
-window.App = { S, api, $, $$, el, icon, toast, openModal, closeModal, confirmModal, askText, fmtDate, fmtBytes, fmtS, P, M, specOf, moduleLabel,
+window.App = { S, api, $, $$, el, icon, t, tp, toast, openModal, closeModal, confirmModal, askText, fmtDate, fmtBytes, fmtS, P, M, specOf, moduleLabel,
   currentName, applyParams, switchModule, switchProject, showTab, save, playVideo, showImage, showImageSrc, openFolder, ready };
 boot();
 })();
