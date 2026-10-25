@@ -170,3 +170,7 @@ When the assistant looks at preview frames, each 960×540 frame costs about 690 
 ## Fonts
 
 The fonts in `fonts/` (Cinzel, Cinzel Decorative, EB Garamond, IM Fell English) are under the SIL Open Font License, see [fonts/OFL.txt](fonts/OFL.txt).
+
+## License
+
+The code is under the [MIT License](LICENSE). The fonts keep their own SIL Open Font License (see above).
